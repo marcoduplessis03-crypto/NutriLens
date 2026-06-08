@@ -1,8 +1,9 @@
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useLocalSearchParams } from "expo-router";
 import { useState } from "react";
-import { Button, StyleSheet, Text, View } from "react-native";
-import { evaluateProduct } from "./src/evaluateProduct";
+import { Button, Image, StyleSheet, Text, View } from "react-native";
+import { fetchProductByBarcode } from "../src/api/openFoodFacts";
+import { evaluateProduct } from "../src/evaluateProduct";
 
 export default function ScannerScreen() {
   const { conditions } = useLocalSearchParams();
@@ -10,15 +11,48 @@ export default function ScannerScreen() {
   const [scanned, setScanned] = useState(false);
   const [barcode, setBarcode] = useState("");
   const [resultText, setResultText] = useState("Waiting for scan...");
+  const [productImage, setProductImage] = useState(null);
 
   const selectedConditions = String(conditions || "")
     .split(",")
     .filter(Boolean);
-
-  function handleScan(result: any) {
+console.log("SCANNER CONDITIONS PARAM:", conditions);
+console.log("SCANNER SELECTED CONDITIONS:", selectedConditions);
+  async function handleScan(result: any) {
     setScanned(true);
     setBarcode(result.data);
-    setResultText("Barcode scanned successfully.");
+    setResultText("Looking up product...");
+    setProductImage(null);
+
+    try {
+      const product = await fetchProductByBarcode(result.data);
+
+      if (!product) {
+        setResultText("Product not found in Open Food Facts.");
+        return;
+      }
+
+      const productForRules = {
+        product_name: product.name,
+        ingredients_text: product.ingredients,
+        nutriments: product.nutriments,
+      };
+console.log("SELECTED CONDITIONS:", selectedConditions);
+console.log("PRODUCT FOR RULES:", productForRules);
+      const warnings = evaluateProduct(productForRules, selectedConditions);
+
+      setProductImage(product.image);
+      setResultText(
+        `${product.name}\n${product.brand}\n\n${
+          warnings.length > 0
+            ? warnings.join("\n\n")
+            : "No major warnings found for your selected conditions."
+        }`
+      );
+    } catch (error) {
+      console.error(error);
+      setResultText("Error fetching product data.");
+    }
   }
 
   function loadTestProduct() {
@@ -30,14 +64,13 @@ export default function ScannerScreen() {
         sodium_100g: 0.5,
       },
     };
-
+console.log("TEST SELECTED CONDITIONS:", selectedConditions);
     const warnings = evaluateProduct(testProduct, selectedConditions);
 
     setScanned(true);
     setBarcode("TEST-001");
-    setResultText(
-      `${testProduct.product_name}\n\n${warnings.join("\n\n")}`
-    );
+    setProductImage(null);
+    setResultText(`${testProduct.product_name}\n\n${warnings.join("\n\n")}`);
   }
 
   if (!permission) return <Text>Loading camera...</Text>;
@@ -57,6 +90,10 @@ export default function ScannerScreen() {
       <View style={styles.resultContainer}>
         <Text style={styles.title}>NutriLens</Text>
 
+        {productImage && (
+          <Image source={{ uri: productImage }} style={styles.productImage} />
+        )}
+
         <Text style={styles.label}>Selected Conditions:</Text>
         <Text style={styles.result}>{String(conditions || "None")}</Text>
 
@@ -74,6 +111,7 @@ export default function ScannerScreen() {
             setScanned(false);
             setBarcode("");
             setResultText("Waiting for scan...");
+            setProductImage(null);
           }}
         />
       </View>
@@ -118,6 +156,12 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     color: "black",
   },
+  productImage: {
+    width: 160,
+    height: 160,
+    resizeMode: "contain",
+    marginBottom: 16,
+  },
   label: {
     fontSize: 16,
     fontWeight: "bold",
@@ -134,7 +178,7 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: "black",
     textAlign: "center",
-    marginVertical: 20,
+    marginVertical: 12,
   },
   testButton: {
     position: "absolute",

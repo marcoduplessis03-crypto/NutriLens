@@ -64,8 +64,8 @@ export default function HomeScreen() {
     })
   }
 >
-        <Text style={styles.buttonText}>Continue</Text>
-      </TouchableOpacity>
+  <Text style={styles.buttonText}>Continue</Text>
+</TouchableOpacity>
     </ScrollView>
   );
 }
