@@ -4,7 +4,9 @@ export function evaluateProduct(
 ) {
   const warnings: string[] = [];
 
-  const ingredients = (product.ingredients_text || "").toLowerCase();
+  const productName = (product.product_name || "").toLowerCase();
+const ingredients = (product.ingredients_text || "").toLowerCase();
+const searchableText = `${productName} ${ingredients}`;
   const nutriments = product.nutriments || {};
   const conditions = selectedConditions.map((c) => c.toLowerCase());
 
@@ -19,9 +21,9 @@ export function evaluateProduct(
   const saturatedFat = nutriments["saturated-fat_100g"] || 0;
 
   const containsSalt =
-    ingredients.includes("salt") ||
-    ingredients.includes("sodium chloride") ||
-    ingredients.includes("sea salt");
+  searchableText.includes("salt") ||
+  searchableText.includes("sodium chloride") ||
+  searchableText.includes("sea salt");
 
   if (conditions.includes("kidney") || conditions.includes("kidney disease")) {
     if (sodium > 400 || containsSalt) {
