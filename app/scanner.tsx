@@ -5,6 +5,7 @@ import { Button, Image, ScrollView, StyleSheet, Text, View } from "react-native"
 import { fetchProductByBarcode } from "../src/api/openFoodFacts";
 import { evaluateProduct } from "../src/evaluateProduct";
 import { calculateRisk } from "../src/riskEngine";
+import { COLORS, RADIUS } from "../src/theme";
 
 export default function ScannerScreen() {
   const { conditions } = useLocalSearchParams();
@@ -26,7 +27,9 @@ console.log("SCANNER SELECTED CONDITIONS:", selectedConditions);
 
   setScanned(true);
   setBarcode(result.data);
-    
+  setResultText("Looking up product...");
+setProductImage(null);
+setRisk({ score: 0, reasons: [] });
 
     try {
       const product = await fetchProductByBarcode(result.data);
@@ -143,7 +146,6 @@ if (scanned) {
           onPress={() => {
             setScanned(false);
             setBarcode("");
-            setResultText("Waiting for scan...");
             setProductImage(null);
             setResultText("Waiting for scan...");
             setRisk({ score: 0, reasons: [] });
@@ -176,36 +178,37 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     padding: 24,
-    backgroundColor: "white",
+    backgroundColor: COLORS.background,
   },
   scoreCardSafe: {
-  backgroundColor: "#d4edda",
+  backgroundColor: "#DCFCE7",
 },
 scoreCardLow: {
-  backgroundColor: "#fff3cd",
+  backgroundColor: "#FEF9C3",
 },
 scoreCardModerate: {
-  backgroundColor: "#ffe0b2",
+  backgroundColor: "#FFEDD5",
 },
 scoreCardHigh: {
-  backgroundColor: "#f8d7da",
+  backgroundColor: "#FEE2E2",
 },
   resultContainer: {
   flexGrow: 1,
-  backgroundColor: "white",
+  backgroundColor: COLORS.background,
   alignItems: "center",
   padding: 24,
   paddingBottom: 60,
 },
   title: {
-    fontSize: 30,
-    fontWeight: "bold",
-    marginBottom: 20,
-    color: "black",
-  },
+  fontSize: 34,
+  fontWeight: "700",
+  marginBottom: 20,
+  color: COLORS.primary,
+},
   productImage: {
-    width: 160,
-    height: 160,
+    width: 180,
+height: 180,
+borderRadius: 20,
     resizeMode: "contain",
     marginBottom: 16,
   },
@@ -213,17 +216,17 @@ scoreCardHigh: {
     fontSize: 16,
     fontWeight: "bold",
     marginTop: 16,
-    color: "black",
+   color: COLORS.text,
   },
   barcode: {
     fontSize: 20,
     fontWeight: "bold",
     marginVertical: 10,
-    color: "black",
+    color: COLORS.text,
   },
   result: {
     fontSize: 18,
-    color: "black",
+    color: COLORS.text,
     textAlign: "center",
     marginVertical: 12,
   },
@@ -234,12 +237,17 @@ scoreCardHigh: {
     right: 30,
   },
   scoreCard: {
-    backgroundColor: "#fff3cd",
-    padding: 16,
-    borderRadius: 12,
-    marginVertical: 12,
-    alignItems: "center",
-  },
+  backgroundColor: COLORS.card,
+  padding: 20,
+  borderRadius: RADIUS.lg,
+  marginVertical: 12,
+  alignItems: "center",
+
+  shadowColor: "#000",
+  shadowOpacity: 0.08,
+  shadowRadius: 12,
+  elevation: 4,
+},
   scoreTitle: {
     fontSize: 18,
     fontWeight: "bold",
@@ -256,7 +264,7 @@ scoreCardHigh: {
   },
   riskReason: {
     fontSize: 15,
-    color: "black",
+    color: COLORS.text,
     textAlign: "center",
     marginBottom: 4,
   },
