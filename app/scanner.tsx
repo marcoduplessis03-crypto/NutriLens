@@ -1,7 +1,7 @@
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useLocalSearchParams } from "expo-router";
 import { useState } from "react";
-import { Button, Image, StyleSheet, Text, View } from "react-native";
+import { Button, Image, ScrollView, StyleSheet, Text, View } from "react-native";
 import { fetchProductByBarcode } from "../src/api/openFoodFacts";
 import { evaluateProduct } from "../src/evaluateProduct";
 import { calculateRisk } from "../src/riskEngine";
@@ -22,10 +22,11 @@ const [risk, setRisk] = useState({ score: 0, reasons: [] });
 console.log("SCANNER CONDITIONS PARAM:", conditions);
 console.log("SCANNER SELECTED CONDITIONS:", selectedConditions);
   async function handleScan(result: any) {
-    setScanned(true);
-    setBarcode(result.data);
-    setResultText("Looking up product...");
-    setProductImage(null);
+  if (scanned) return;
+
+  setScanned(true);
+  setBarcode(result.data);
+    
 
     try {
       const product = await fetchProductByBarcode(result.data);
@@ -79,7 +80,12 @@ console.log("TEST SELECTED CONDITIONS:", selectedConditions);
     setProductImage(null);
     setResultText(`${testProduct.product_name}\n\n${warnings.join("\n\n")}`);
   }
-
+const getScoreCardStyle = () => {
+  if (risk.score >= 70) return styles.scoreCardHigh;
+  if (risk.score >= 40) return styles.scoreCardModerate;
+  if (risk.score > 0) return styles.scoreCardLow;
+  return styles.scoreCardSafe;
+};
   if (!permission) return <Text>Loading camera...</Text>;
 
   if (!permission.granted) {
@@ -94,14 +100,14 @@ console.log("TEST SELECTED CONDITIONS:", selectedConditions);
 
 if (scanned) {
   return (
-      <View style={styles.resultContainer}>
+      <ScrollView contentContainerStyle={styles.resultContainer}>
         <Text style={styles.title}>NutriLens</Text>
 
         {productImage && (
   <Image source={{ uri: productImage }} style={styles.productImage} />
 )}
 
-<View style={styles.scoreCard}>
+<View style={[styles.scoreCard, getScoreCardStyle()]}>
   <Text style={styles.scoreTitle}>NutriLens Score</Text>
   <Text style={styles.scoreNumber}>{risk.score} / 100</Text>
   <Text style={styles.scoreLabel}>
@@ -139,13 +145,11 @@ if (scanned) {
             setBarcode("");
             setResultText("Waiting for scan...");
             setProductImage(null);
-            setResultText(
-  "Could not connect to Open Food Facts. Please check your internet connection and try again."
-);
+            setResultText("Waiting for scan...");
             setRisk({ score: 0, reasons: [] });
           }}
         />
-      </View>
+      </ScrollView>
     );
   }
 
@@ -174,13 +178,25 @@ const styles = StyleSheet.create({
     padding: 24,
     backgroundColor: "white",
   },
+  scoreCardSafe: {
+  backgroundColor: "#d4edda",
+},
+scoreCardLow: {
+  backgroundColor: "#fff3cd",
+},
+scoreCardModerate: {
+  backgroundColor: "#ffe0b2",
+},
+scoreCardHigh: {
+  backgroundColor: "#f8d7da",
+},
   resultContainer: {
-    flex: 1,
-    backgroundColor: "white",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 24,
-  },
+  flexGrow: 1,
+  backgroundColor: "white",
+  alignItems: "center",
+  padding: 24,
+  paddingBottom: 60,
+},
   title: {
     fontSize: 30,
     fontWeight: "bold",
