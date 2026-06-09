@@ -1,3 +1,4 @@
+import { checkIngredientKnowledge } from "./checkIngredientKnowledge";
 export function evaluateProduct(
   product: any,
   selectedConditions: string[] = []
@@ -102,6 +103,11 @@ const searchableText = `${productName} ${ingredients}`;
   if (warnings.length === 0) {
     warnings.push("🟢 No major concerns found for selected conditions.");
   }
+const ingredientKnowledgeWarnings = checkIngredientKnowledge(
+  product,
+  selectedConditions
+);
 
+warnings.push(...ingredientKnowledgeWarnings.map((item: any) => item.message));
   return warnings;
 }

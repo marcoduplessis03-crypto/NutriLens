@@ -3,6 +3,8 @@ import { useLocalSearchParams } from "expo-router";
 import { useState } from "react";
 import { Button, Image, ScrollView, StyleSheet, Text, View } from "react-native";
 import { fetchProductByBarcode } from "../src/api/openFoodFacts";
+import { checkIngredientKnowledge } from "../src/checkIngredientKnowledge";
+import CollapsibleSection from "../src/components/CollapsibleSection";
 import { evaluateProduct } from "../src/evaluateProduct";
 import { calculateRisk } from "../src/riskEngine";
 import { COLORS, RADIUS } from "../src/theme";
@@ -12,46 +14,53 @@ export default function ScannerScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
   const [barcode, setBarcode] = useState("");
-const [resultText, setResultText] = useState("Waiting for scan...");
-const [productImage, setProductImage] = useState(null);
-const [risk, setRisk] = useState({ score: 0, reasons: [] });
-
+  const [ingredientInsights, setIngredientInsights] = useState<any[]>([]);
+  const [product, setProduct] = useState<any>(null);
+  const [resultText, setResultText] = useState("Waiting for scan...");
+  const [productImage, setProductImage] = useState<string | null>(null);
+  const [risk, setRisk] = useState({ score: 0, reasons: [] as string[] });
 
   const selectedConditions = String(conditions || "")
     .split(",")
     .filter(Boolean);
-console.log("SCANNER CONDITIONS PARAM:", conditions);
-console.log("SCANNER SELECTED CONDITIONS:", selectedConditions);
-  async function handleScan(result: any) {
-  if (scanned) return;
 
-  setScanned(true);
-  setBarcode(result.data);
-  setResultText("Looking up product...");
-setProductImage(null);
-setRisk({ score: 0, reasons: [] });
+  async function handleScan(result: any) {
+    if (scanned) return;
+
+    setScanned(true);
+    setBarcode(result.data);
+    setResultText("Looking up product...");
+    setProduct(null);
+    setProductImage(null);
+    setRisk({ score: 0, reasons: [] });
 
     try {
-      const product = await fetchProductByBarcode(result.data);
+      const foundProduct = await fetchProductByBarcode(result.data);
 
-      if (!product) {
+      if (!foundProduct) {
         setResultText("Product not found in Open Food Facts.");
         return;
       }
 
-      const productForRules = {
-        product_name: product.name,
-        ingredients_text: product.ingredients,
-        nutriments: product.nutriments,
-      };
-console.log("SELECTED CONDITIONS:", selectedConditions);
-console.log("PRODUCT FOR RULES:", productForRules);
-      const warnings = evaluateProduct(productForRules, selectedConditions);
-      setRisk(calculateRisk(productForRules, selectedConditions));
+      setProduct(foundProduct);
 
-      setProductImage(product.image);
+      const productForRules = {
+        product_name: foundProduct.name,
+        ingredients_text: foundProduct.ingredients,
+        nutriments: foundProduct.nutriments,
+      };
+      
+
+      const warnings = evaluateProduct(productForRules, selectedConditions);
+      const calculatedRisk = calculateRisk(productForRules, selectedConditions);
+      const insights = checkIngredientKnowledge(productForRules, selectedConditions);
+setIngredientInsights(insights);
+
+      setRisk(calculatedRisk);
+      setProductImage(foundProduct.image);
+
       setResultText(
-        `${product.name}\n${product.brand}\n\n${
+        `${foundProduct.name}\n${foundProduct.brand || ""}\n\n${
           warnings.length > 0
             ? warnings.join("\n\n")
             : "No major warnings found for your selected conditions."
@@ -60,13 +69,13 @@ console.log("PRODUCT FOR RULES:", productForRules);
     } catch (error) {
       console.error(error);
       setResultText(
-  "Could not connect to Open Food Facts. Please check your internet connection and try again."
-);
+        "Could not connect to Open Food Facts. Please check your internet connection and try again."
+      );
     }
   }
 
   function loadTestProduct() {
-    const testProduct = {
+    const testProductForRules = {
       product_name: "Test Cola",
       ingredients_text: "Water, sugar, phosphoric acid",
       nutriments: {
@@ -74,21 +83,44 @@ console.log("PRODUCT FOR RULES:", productForRules);
         sodium_100g: 0.5,
       },
     };
-console.log("TEST SELECTED CONDITIONS:", selectedConditions);
-    const warnings = evaluateProduct(testProduct, selectedConditions);
-    setRisk(calculateRisk(testProduct, selectedConditions));
 
+    const displayProduct = {
+      name: "Test Cola",
+      brand: "Test Brand",
+      ingredients: "Water, sugar, phosphoric acid",
+      nutriments: {
+        sugars_100g: 12,
+        sodium_100g: 0.5,
+      },
+      image: null,
+    };
+
+    const warnings = evaluateProduct(testProductForRules, selectedConditions);
+    const calculatedRisk = calculateRisk(testProductForRules, selectedConditions);
+    const insights = checkIngredientKnowledge(testProductForRules, selectedConditions);
+setIngredientInsights(insights);
+
+    setProduct(displayProduct);
+    setRisk(calculatedRisk);
     setScanned(true);
     setBarcode("TEST-001");
     setProductImage(null);
-    setResultText(`${testProduct.product_name}\n\n${warnings.join("\n\n")}`);
+    setResultText(
+      `${testProductForRules.product_name}\n\n${
+        warnings.length > 0
+          ? warnings.join("\n\n")
+          : "No major warnings found for your selected conditions."
+      }`
+    );
   }
-const getScoreCardStyle = () => {
-  if (risk.score >= 70) return styles.scoreCardHigh;
-  if (risk.score >= 40) return styles.scoreCardModerate;
-  if (risk.score > 0) return styles.scoreCardLow;
-  return styles.scoreCardSafe;
-};
+
+  const getScoreCardStyle = () => {
+    if (risk.score >= 70) return styles.scoreCardHigh;
+    if (risk.score >= 40) return styles.scoreCardModerate;
+    if (risk.score > 0) return styles.scoreCardLow;
+    return styles.scoreCardSafe;
+  };
+
   if (!permission) return <Text>Loading camera...</Text>;
 
   if (!permission.granted) {
@@ -101,34 +133,39 @@ const getScoreCardStyle = () => {
     );
   }
 
-if (scanned) {
-  return (
+  if (scanned) {
+    return (
       <ScrollView contentContainerStyle={styles.resultContainer}>
         <Text style={styles.title}>NutriLens</Text>
 
+        <Text style={styles.disclaimer}>
+          Informational tool only. NutriLens does not replace professional
+          medical advice.
+        </Text>
+
         {productImage && (
-  <Image source={{ uri: productImage }} style={styles.productImage} />
-)}
+          <Image source={{ uri: productImage }} style={styles.productImage} />
+        )}
 
-<View style={[styles.scoreCard, getScoreCardStyle()]}>
-  <Text style={styles.scoreTitle}>NutriLens Score</Text>
-  <Text style={styles.scoreNumber}>{risk.score} / 100</Text>
-  <Text style={styles.scoreLabel}>
-    {risk.score >= 70
-      ? "HIGH RISK"
-      : risk.score >= 40
-      ? "MODERATE RISK"
-      : risk.score > 0
-      ? "LOW RISK"
-      : "LOW CONCERN"}
-  </Text>
-</View>
+        <View style={[styles.scoreCard, getScoreCardStyle()]}>
+          <Text style={styles.scoreTitle}>NutriLens Score</Text>
+          <Text style={styles.scoreNumber}>{risk.score} / 100</Text>
+          <Text style={styles.scoreLabel}>
+            {risk.score >= 70
+              ? "HIGH RISK"
+              : risk.score >= 40
+              ? "MODERATE RISK"
+              : risk.score > 0
+              ? "LOW RISK"
+              : "LOW CONCERN"}
+          </Text>
+        </View>
 
-{risk.reasons.map((reason, index) => (
-  <Text key={index} style={styles.riskReason}>
-    ⚠️ {reason}
-  </Text>
-))}
+        {risk.reasons.map((reason, index) => (
+          <Text key={index} style={styles.riskReason}>
+            ⚠️ {reason}
+          </Text>
+        ))}
 
         <Text style={styles.label}>Selected Conditions:</Text>
         <Text style={styles.result}>{String(conditions || "None")}</Text>
@@ -139,6 +176,74 @@ if (scanned) {
         <Text style={styles.label}>Result:</Text>
         <Text style={styles.result}>{resultText}</Text>
 
+        <CollapsibleSection title="Ingredients">
+          <Text style={styles.result}>
+            {product?.ingredients ||
+              "No ingredient information available for this product."}
+          </Text>
+        </CollapsibleSection>
+
+        <CollapsibleSection title="Nutrition / Contents">
+          <Text style={styles.nutritionText}>
+            Sodium: {product?.nutriments?.sodium_100g ?? "Not listed"} per 100g
+          </Text>
+          <Text style={styles.nutritionText}>
+            Sugar: {product?.nutriments?.sugars_100g ?? "Not listed"} per 100g
+          </Text>
+          <Text style={styles.nutritionText}>
+            Carbohydrates:{" "}
+            {product?.nutriments?.carbohydrates_100g ?? "Not listed"} per 100g
+          </Text>
+          <Text style={styles.nutritionText}>
+            Protein: {product?.nutriments?.proteins_100g ?? "Not listed"} per
+            100g
+          </Text>
+          <Text style={styles.nutritionText}>
+            Fat: {product?.nutriments?.fat_100g ?? "Not listed"} per 100g
+          </Text>
+        </CollapsibleSection>
+
+        <CollapsibleSection title="Ingredient Intelligence">
+  {ingredientInsights.length > 0 ? (
+    ingredientInsights.map((item, index) => (
+      <View key={index} style={styles.insightCard}>
+        <Text style={styles.insightTitle}>
+          {item.ingredient} detected
+        </Text>
+        <Text style={styles.nutritionText}>
+          Risk type: {item.riskType}
+        </Text>
+        <Text style={styles.nutritionText}>
+          Severity: {item.severity}
+        </Text>
+        <Text style={styles.nutritionText}>
+          {item.message}
+        </Text>
+      </View>
+    ))
+  ) : (
+    <Text style={styles.result}>
+      No ingredient intelligence warnings found.
+    </Text>
+  )}
+</CollapsibleSection>
+
+        <CollapsibleSection title="Why this product may be harmful">
+          <Text style={styles.result}>
+            {risk.reasons.length > 0
+              ? `This product may be concerning because: ${risk.reasons.join(
+                  ", "
+                )}. These ingredients or nutrition values may affect your selected health conditions.`
+              : "NutriLens did not find major concerns based on the available product data and your selected conditions."}
+          </Text>
+        </CollapsibleSection>
+
+        <Text style={styles.bottomDisclaimer}>
+          ⚠ Results are generated automatically from product information and may
+          be incomplete or inaccurate. Always verify the label and consult your
+          doctor, dietitian, or medical team before making dietary decisions.
+        </Text>
+
         <Button title="Load Test Product" onPress={loadTestProduct} />
 
         <Button
@@ -146,7 +251,9 @@ if (scanned) {
           onPress={() => {
             setScanned(false);
             setBarcode("");
+            setProduct(null);
             setProductImage(null);
+            setIngredientInsights([]);
             setResultText("Waiting for scan...");
             setRisk({ score: 0, reasons: [] });
           }}
@@ -180,35 +287,37 @@ const styles = StyleSheet.create({
     padding: 24,
     backgroundColor: COLORS.background,
   },
-  scoreCardSafe: {
-  backgroundColor: "#DCFCE7",
-},
-scoreCardLow: {
-  backgroundColor: "#FEF9C3",
-},
-scoreCardModerate: {
-  backgroundColor: "#FFEDD5",
-},
-scoreCardHigh: {
-  backgroundColor: "#FEE2E2",
-},
   resultContainer: {
-  flexGrow: 1,
-  backgroundColor: COLORS.background,
-  alignItems: "center",
-  padding: 24,
-  paddingBottom: 60,
-},
+    flexGrow: 1,
+    backgroundColor: COLORS.background,
+    alignItems: "center",
+    padding: 24,
+    paddingBottom: 60,
+  },
   title: {
-  fontSize: 34,
-  fontWeight: "700",
-  marginBottom: 20,
-  color: COLORS.primary,
-},
+    fontSize: 34,
+    fontWeight: "700",
+    marginBottom: 8,
+    color: COLORS.primary,
+  },
+  disclaimer: {
+    fontSize: 12,
+    color: COLORS.muted,
+    textAlign: "center",
+    marginBottom: 20,
+    maxWidth: 320,
+  },
+  bottomDisclaimer: {
+    fontSize: 12,
+    color: COLORS.muted,
+    textAlign: "center",
+    marginVertical: 20,
+    maxWidth: 340,
+  },
   productImage: {
     width: 180,
-height: 180,
-borderRadius: 20,
+    height: 180,
+    borderRadius: 20,
     resizeMode: "contain",
     marginBottom: 16,
   },
@@ -216,7 +325,7 @@ borderRadius: 20,
     fontSize: 16,
     fontWeight: "bold",
     marginTop: 16,
-   color: COLORS.text,
+    color: COLORS.text,
   },
   barcode: {
     fontSize: 20,
@@ -225,10 +334,15 @@ borderRadius: 20,
     color: COLORS.text,
   },
   result: {
-    fontSize: 18,
+    fontSize: 16,
     color: COLORS.text,
     textAlign: "center",
     marginVertical: 12,
+  },
+  nutritionText: {
+    fontSize: 15,
+    color: COLORS.text,
+    marginBottom: 6,
   },
   testButton: {
     position: "absolute",
@@ -237,17 +351,28 @@ borderRadius: 20,
     right: 30,
   },
   scoreCard: {
-  backgroundColor: COLORS.card,
-  padding: 20,
-  borderRadius: RADIUS.lg,
-  marginVertical: 12,
-  alignItems: "center",
-
-  shadowColor: "#000",
-  shadowOpacity: 0.08,
-  shadowRadius: 12,
-  elevation: 4,
-},
+    backgroundColor: COLORS.card,
+    padding: 20,
+    borderRadius: RADIUS.lg,
+    marginVertical: 12,
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  scoreCardSafe: {
+    backgroundColor: "#DCFCE7",
+  },
+  scoreCardLow: {
+    backgroundColor: "#FEF9C3",
+  },
+  scoreCardModerate: {
+    backgroundColor: "#FFEDD5",
+  },
+  scoreCardHigh: {
+    backgroundColor: "#FEE2E2",
+  },
   scoreTitle: {
     fontSize: 18,
     fontWeight: "bold",
@@ -268,4 +393,16 @@ borderRadius: 20,
     textAlign: "center",
     marginBottom: 4,
   },
+  insightCard: {
+  backgroundColor: COLORS.background,
+  padding: 12,
+  borderRadius: RADIUS.md,
+  marginBottom: 10,
+},
+insightTitle: {
+  fontSize: 15,
+  fontWeight: "bold",
+  color: COLORS.text,
+  marginBottom: 4,
+},
 });
