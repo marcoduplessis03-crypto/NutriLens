@@ -4,14 +4,17 @@ import { useState } from "react";
 import { Button, Image, StyleSheet, Text, View } from "react-native";
 import { fetchProductByBarcode } from "../src/api/openFoodFacts";
 import { evaluateProduct } from "../src/evaluateProduct";
+import { calculateRisk } from "../src/riskEngine";
 
 export default function ScannerScreen() {
   const { conditions } = useLocalSearchParams();
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
   const [barcode, setBarcode] = useState("");
-  const [resultText, setResultText] = useState("Waiting for scan...");
-  const [productImage, setProductImage] = useState(null);
+const [resultText, setResultText] = useState("Waiting for scan...");
+const [productImage, setProductImage] = useState(null);
+const [risk, setRisk] = useState({ score: 0, reasons: [] });
+
 
   const selectedConditions = String(conditions || "")
     .split(",")
@@ -40,6 +43,7 @@ console.log("SCANNER SELECTED CONDITIONS:", selectedConditions);
 console.log("SELECTED CONDITIONS:", selectedConditions);
 console.log("PRODUCT FOR RULES:", productForRules);
       const warnings = evaluateProduct(productForRules, selectedConditions);
+      setRisk(calculateRisk(productForRules, selectedConditions));
 
       setProductImage(product.image);
       setResultText(
@@ -51,7 +55,9 @@ console.log("PRODUCT FOR RULES:", productForRules);
       );
     } catch (error) {
       console.error(error);
-      setResultText("Error fetching product data.");
+      setResultText(
+  "Could not connect to Open Food Facts. Please check your internet connection and try again."
+);
     }
   }
 
@@ -66,6 +72,7 @@ console.log("PRODUCT FOR RULES:", productForRules);
     };
 console.log("TEST SELECTED CONDITIONS:", selectedConditions);
     const warnings = evaluateProduct(testProduct, selectedConditions);
+    setRisk(calculateRisk(testProduct, selectedConditions));
 
     setScanned(true);
     setBarcode("TEST-001");
@@ -85,14 +92,34 @@ console.log("TEST SELECTED CONDITIONS:", selectedConditions);
     );
   }
 
-  if (scanned) {
-    return (
+if (scanned) {
+  return (
       <View style={styles.resultContainer}>
         <Text style={styles.title}>NutriLens</Text>
 
         {productImage && (
-          <Image source={{ uri: productImage }} style={styles.productImage} />
-        )}
+  <Image source={{ uri: productImage }} style={styles.productImage} />
+)}
+
+<View style={styles.scoreCard}>
+  <Text style={styles.scoreTitle}>NutriLens Score</Text>
+  <Text style={styles.scoreNumber}>{risk.score} / 100</Text>
+  <Text style={styles.scoreLabel}>
+    {risk.score >= 70
+      ? "HIGH RISK"
+      : risk.score >= 40
+      ? "MODERATE RISK"
+      : risk.score > 0
+      ? "LOW RISK"
+      : "LOW CONCERN"}
+  </Text>
+</View>
+
+{risk.reasons.map((reason, index) => (
+  <Text key={index} style={styles.riskReason}>
+    ⚠️ {reason}
+  </Text>
+))}
 
         <Text style={styles.label}>Selected Conditions:</Text>
         <Text style={styles.result}>{String(conditions || "None")}</Text>
@@ -112,6 +139,10 @@ console.log("TEST SELECTED CONDITIONS:", selectedConditions);
             setBarcode("");
             setResultText("Waiting for scan...");
             setProductImage(null);
+            setResultText(
+  "Could not connect to Open Food Facts. Please check your internet connection and try again."
+);
+            setRisk({ score: 0, reasons: [] });
           }}
         />
       </View>
@@ -185,5 +216,32 @@ const styles = StyleSheet.create({
     top: 60,
     left: 30,
     right: 30,
+  },
+  scoreCard: {
+    backgroundColor: "#fff3cd",
+    padding: 16,
+    borderRadius: 12,
+    marginVertical: 12,
+    alignItems: "center",
+  },
+  scoreTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+  },
+  scoreNumber: {
+    fontSize: 32,
+    fontWeight: "bold",
+    marginTop: 8,
+  },
+  scoreLabel: {
+    fontSize: 16,
+    fontWeight: "bold",
+    marginTop: 4,
+  },
+  riskReason: {
+    fontSize: 15,
+    color: "black",
+    textAlign: "center",
+    marginBottom: 4,
   },
 });
