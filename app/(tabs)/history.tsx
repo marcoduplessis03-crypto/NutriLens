@@ -1,4 +1,4 @@
-import { useFocusEffect } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { useCallback, useState } from "react";
 import {
     Alert,
@@ -20,10 +20,7 @@ import {
 import { COLORS, RADIUS } from "../../src/theme";
 
 export default function HistoryScreen() {
-  const [history, setHistory] = useState<ScanHistoryItem[]>(
-    []
-  );
-
+  const [history, setHistory] = useState<ScanHistoryItem[]>([]);
   const [search, setSearch] = useState("");
 
   const loadHistory = useCallback(async () => {
@@ -45,15 +42,9 @@ export default function HistoryScreen() {
     }
 
     return (
-      item.productName
-        .toLowerCase()
-        .includes(searchValue) ||
-      item.brand
-        ?.toLowerCase()
-        .includes(searchValue) ||
-      item.barcode
-        .toLowerCase()
-        .includes(searchValue)
+      item.productName.toLowerCase().includes(searchValue) ||
+      item.brand?.toLowerCase().includes(searchValue) ||
+      item.barcode.toLowerCase().includes(searchValue)
     );
   });
 
@@ -81,7 +72,9 @@ export default function HistoryScreen() {
   }
 
   function confirmClearHistory() {
-    if (history.length === 0) return;
+    if (history.length === 0) {
+      return;
+    }
 
     Alert.alert(
       "Clear history",
@@ -104,9 +97,17 @@ export default function HistoryScreen() {
   }
 
   function getRiskColor(score: number) {
-    if (score >= 70) return COLORS.high;
-    if (score >= 40) return COLORS.moderate;
-    if (score > 0) return COLORS.low;
+    if (score >= 70) {
+      return COLORS.high;
+    }
+
+    if (score >= 40) {
+      return COLORS.moderate;
+    }
+
+    if (score > 0) {
+      return COLORS.low;
+    }
 
     return COLORS.safe;
   }
@@ -163,12 +164,23 @@ export default function HistoryScreen() {
         }
         showsVerticalScrollIndicator={false}
         renderItem={({ item }) => {
-          const riskColor = getRiskColor(
-            item.riskScore
-          );
+          const riskColor = getRiskColor(item.riskScore);
 
           return (
-            <View style={styles.card}>
+            <Pressable
+              style={({ pressed }) => [
+                styles.card,
+                pressed && styles.cardPressed,
+              ]}
+              onPress={() =>
+                router.push({
+                  pathname: "/history-detail",
+                  params: {
+                    id: item.id,
+                  },
+                })
+              }
+            >
               <View style={styles.topRow}>
                 {item.imageUrl ? (
                   <Image
@@ -204,7 +216,10 @@ export default function HistoryScreen() {
                 </View>
 
                 <Pressable
-                  onPress={() => confirmDelete(item)}
+                  onPress={(event) => {
+                    event.stopPropagation();
+                    confirmDelete(item);
+                  }}
                   style={styles.deleteButton}
                 >
                   <Text style={styles.deleteText}>×</Text>
@@ -276,7 +291,7 @@ export default function HistoryScreen() {
               <Text style={styles.date}>
                 {formatDate(item.scannedAt)}
               </Text>
-            </View>
+            </Pressable>
           );
         }}
         ListEmptyComponent={
@@ -369,6 +384,11 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.lg,
     padding: 16,
     marginBottom: 14,
+  },
+
+  cardPressed: {
+    opacity: 0.75,
+    transform: [{ scale: 0.99 }],
   },
 
   topRow: {

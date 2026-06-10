@@ -8,12 +8,18 @@ export type ScanHistoryItem = {
   productName: string;
   brand?: string;
   imageUrl?: string;
+
   riskScore: number;
   riskLevel: string;
   warningCount: number;
   warnings: string[];
+
   conditions: string[];
   scannedAt: string;
+
+  ingredients?: string;
+  nutriments?: Record<string, any>;
+  riskReasons?: string[];
 };
 
 export async function getScanHistory(): Promise<ScanHistoryItem[]> {
@@ -30,6 +36,19 @@ export async function getScanHistory(): Promise<ScanHistoryItem[]> {
   } catch (error) {
     console.error("Could not load scan history:", error);
     return [];
+  }
+}
+
+export async function getHistoryItemById(
+  id: string
+): Promise<ScanHistoryItem | null> {
+  try {
+    const history = await getScanHistory();
+
+    return history.find((item) => item.id === id) || null;
+  } catch (error) {
+    console.error("Could not load history item:", error);
+    return null;
   }
 }
 
