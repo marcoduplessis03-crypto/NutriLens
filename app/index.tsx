@@ -1,54 +1,36 @@
 import { router } from "expo-router";
-import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef } from "react";
 import {
   Animated,
   Dimensions,
-  ScrollView,
+  Easing,
+  Pressable,
+  StatusBar,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from "react-native";
 import { COLORS, RADIUS, SPACING } from "../src/theme";
 
-const { width } = Dimensions.get("window");
-
-const slides = [
-  {
-    icon: "📷",
-    title: "Scan any barcode",
-    text: "Instantly look up food products using Open Food Facts.",
-  },
-  {
-    icon: "🛡️",
-    title: "Personalised warnings",
-    text: "NutriLens checks products against your saved health profile.",
-  },
-  {
-    icon: "🛒",
-    title: "Shop with confidence",
-    text: "See risk scores, ingredient insights, and clear food guidance.",
-  },
-];
+const { width, height } = Dimensions.get("window");
 
 export default function WelcomeScreen() {
-  const [activeSlide, setActiveSlide] = useState(0);
-
-  const logoScale = useRef(new Animated.Value(0.85)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(30)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
+  const rotateAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     Animated.parallel([
-      Animated.spring(logoScale, {
-        toValue: 1,
-        friction: 5,
-        tension: 70,
-        useNativeDriver: true,
-      }),
       Animated.timing(fadeAnim, {
         toValue: 1,
         duration: 900,
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 900,
+        easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
       }),
     ]).start();
@@ -56,109 +38,133 @@ export default function WelcomeScreen() {
     Animated.loop(
       Animated.sequence([
         Animated.timing(pulseAnim, {
-          toValue: 1.07,
-          duration: 1300,
+          toValue: 1.08,
+          duration: 1800,
+          easing: Easing.inOut(Easing.ease),
           useNativeDriver: true,
         }),
         Animated.timing(pulseAnim, {
           toValue: 1,
-          duration: 1300,
+          duration: 1800,
+          easing: Easing.inOut(Easing.ease),
           useNativeDriver: true,
         }),
       ])
     ).start();
+
+    Animated.loop(
+      Animated.timing(rotateAnim, {
+        toValue: 1,
+        duration: 18000,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      })
+    ).start();
   }, []);
 
-  const enterApp = () => {
-    router.replace("/(tabs)");
-  };
+  const rotation = rotateAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["0deg", "360deg"],
+  });
 
   return (
     <View style={styles.container}>
+      <StatusBar barStyle="dark-content" backgroundColor={COLORS.background} />
+
+      {/* Background Shapes */}
       <Animated.View
         style={[
-          styles.logoSection,
+          styles.shapeLarge,
+          {
+            transform: [{ rotate: rotation }, { scale: pulseAnim }],
+          },
+        ]}
+      />
+
+      <Animated.View
+        style={[
+          styles.shapeMedium,
+          {
+            transform: [{ scale: pulseAnim }],
+          },
+        ]}
+      />
+
+      <View style={styles.shapeSmall} />
+      <View style={styles.shapeSoft} />
+
+      <Animated.View
+        style={[
+          styles.content,
           {
             opacity: fadeAnim,
-            transform: [{ scale: logoScale }],
+            transform: [{ translateY: slideAnim }],
           },
         ]}
       >
-        <Animated.View
-          style={[
-            styles.glow,
-            {
-              transform: [{ scale: pulseAnim }],
-            },
-          ]}
-        />
+        {/* Logo */}
+        <View style={styles.logoWrapper}>
+          <View style={styles.logoOuter}>
+            <View style={styles.logoLens}>
+              <View style={styles.logoLeaf} />
+              <View style={styles.logoDot} />
+            </View>
+          </View>
+        </View>
 
-        <Animated.View
-          style={[
-            styles.logoCircle,
-            {
-              transform: [{ scale: pulseAnim }],
-            },
+        <Text style={styles.appName}>NutriLens</Text>
+
+        <Text style={styles.tagline}>
+          Scan smarter. Eat safer.
+        </Text>
+
+        <Text style={styles.description}>
+          Instantly check food products for condition-specific ingredient and
+          nutrition risks — designed for kidney disease, diabetes, hypertension,
+          heart health, gout and allergies.
+        </Text>
+
+        <View style={styles.featureCard}>
+          <View style={styles.featureRow}>
+            <View style={styles.featureIcon} />
+            <Text style={styles.featureText}>Offline-first health guidance</Text>
+          </View>
+
+          <View style={styles.featureRow}>
+            <View style={styles.featureIcon} />
+            <Text style={styles.featureText}>Barcode-based product checks</Text>
+          </View>
+
+          <View style={styles.featureRow}>
+            <View style={styles.featureIcon} />
+            <Text style={styles.featureText}>Personalized risk warnings</Text>
+          </View>
+        </View>
+
+        <Pressable
+          style={({ pressed }) => [
+            styles.primaryButton,
+            pressed && styles.primaryButtonPressed,
           ]}
+          onPress={() => router.push("/scanner")}
         >
-          <Text style={styles.logoIcon}>◉</Text>
-          <Text style={styles.logoLeaf}>✓</Text>
-        </Animated.View>
+          <Text style={styles.primaryButtonText}>Get Started</Text>
+        </Pressable>
 
-        <Text style={styles.title}>NutriLens</Text>
-        <Text style={styles.subtitle}>
-          Scan smarter. Eat safer. Understand your food.
+        <Pressable
+          style={({ pressed }) => [
+            styles.secondaryButton,
+            pressed && styles.secondaryButtonPressed,
+          ]}
+          onPress={() => router.push("/(tabs)")}
+        >
+          <Text style={styles.secondaryButtonText}>Scan a Product</Text>
+        </Pressable>
+
+        <Text style={styles.footerText}>
+          No account required. Your selections stay on this device.
         </Text>
       </Animated.View>
-
-      <View style={styles.carouselCard}>
-        <ScrollView
-          horizontal
-          pagingEnabled
-          showsHorizontalScrollIndicator={false}
-          onMomentumScrollEnd={(event) => {
-            const index = Math.round(
-              event.nativeEvent.contentOffset.x / (width - SPACING.lg * 2)
-            );
-            setActiveSlide(index);
-          }}
-        >
-          {slides.map((slide) => (
-            <View key={slide.title} style={styles.slide}>
-              <Text style={styles.slideIcon}>{slide.icon}</Text>
-              <Text style={styles.slideTitle}>{slide.title}</Text>
-              <Text style={styles.slideText}>{slide.text}</Text>
-            </View>
-          ))}
-        </ScrollView>
-
-        <View style={styles.dots}>
-          {slides.map((_, index) => (
-            <View
-              key={index}
-              style={[styles.dot, activeSlide === index && styles.activeDot]}
-            />
-          ))}
-        </View>
-      </View>
-
-      <View style={styles.buttonGroup}>
-        <TouchableOpacity style={styles.primaryButton} onPress={enterApp}>
-          <Text style={styles.primaryButtonText}>Continue as Guest</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.authButton} onPress={enterApp}>
-          <Text style={styles.authButtonText}>G Sign in with Google</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.authButton} onPress={enterApp}>
-          <Text style={styles.authButtonText}> Sign in with Apple</Text>
-        </TouchableOpacity>
-      </View>
-
-      <Text style={styles.disclaimer}>
-        Sign-in buttons are placeholders for now. NutriLens does not replace medical advice.
-      </Text>
     </View>
   );
 }
@@ -167,136 +173,221 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
-    padding: SPACING.lg,
-    justifyContent: "center",
-  },
-  logoSection: {
-    alignItems: "center",
-    marginBottom: 28,
-  },
-  glow: {
-    position: "absolute",
-    top: 8,
-    width: 136,
-    height: 136,
-    borderRadius: 68,
-    backgroundColor: "#99F6E4",
-    opacity: 0.35,
-  },
-  logoCircle: {
-    width: 118,
-    height: 118,
-    borderRadius: 59,
-    backgroundColor: COLORS.primary,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 20,
-    shadowColor: "#000",
-    shadowOpacity: 0.22,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 9,
-  },
-  logoIcon: {
-    color: "#FFFFFF",
-    fontSize: 56,
-    fontWeight: "900",
-    marginTop: -4,
-  },
-  logoLeaf: {
-    position: "absolute",
-    color: "#FFFFFF",
-    fontSize: 30,
-    fontWeight: "900",
-  },
-  title: {
-    fontSize: 44,
-    fontWeight: "900",
-    color: COLORS.text,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: COLORS.muted,
-    textAlign: "center",
-    marginTop: 8,
-  },
-  carouselCard: {
-    backgroundColor: COLORS.card,
-    borderRadius: RADIUS.xl,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    marginBottom: 20,
     overflow: "hidden",
   },
-  slide: {
-    width: width - SPACING.lg * 2,
-    padding: 24,
+
+  content: {
+    flex: 1,
+    paddingHorizontal: SPACING.xl,
+    paddingTop: height * 0.1,
+    paddingBottom: SPACING.xl,
     alignItems: "center",
+    justifyContent: "center",
   },
-  slideIcon: {
-    fontSize: 42,
-    marginBottom: 12,
+
+  shapeLarge: {
+    position: "absolute",
+    width: width * 0.95,
+    height: width * 0.95,
+    borderRadius: width,
+    backgroundColor: "rgba(15, 118, 110, 0.08)",
+    top: -width * 0.35,
+    right: -width * 0.35,
+    borderWidth: 1,
+    borderColor: "rgba(15, 118, 110, 0.14)",
   },
-  slideTitle: {
-    fontSize: 22,
-    fontWeight: "900",
+
+  shapeMedium: {
+    position: "absolute",
+    width: 220,
+    height: 220,
+    borderRadius: 70,
+    backgroundColor: "rgba(22, 163, 74, 0.08)",
+    bottom: 90,
+    left: -90,
+    transform: [{ rotate: "28deg" }],
+  },
+
+  shapeSmall: {
+    position: "absolute",
+    width: 90,
+    height: 90,
+    borderRadius: 28,
+    backgroundColor: "rgba(234, 179, 8, 0.12)",
+    top: height * 0.2,
+    left: 28,
+    transform: [{ rotate: "18deg" }],
+  },
+
+  shapeSoft: {
+    position: "absolute",
+    width: 150,
+    height: 150,
+    borderRadius: 999,
+    backgroundColor: "rgba(220, 38, 38, 0.05)",
+    bottom: -30,
+    right: -20,
+  },
+
+  logoWrapper: {
+    marginBottom: SPACING.lg,
+  },
+
+  logoOuter: {
+    width: 104,
+    height: 104,
+    borderRadius: 32,
+    backgroundColor: COLORS.primary,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: COLORS.primary,
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 8,
+  },
+
+  logoLens: {
+    width: 58,
+    height: 58,
+    borderRadius: 999,
+    borderWidth: 5,
+    borderColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center",
+    position: "relative",
+  },
+
+  logoLeaf: {
+    width: 24,
+    height: 34,
+    borderTopLeftRadius: 18,
+    borderBottomRightRadius: 18,
+    backgroundColor: "#FFFFFF",
+    transform: [{ rotate: "35deg" }],
+  },
+
+  logoDot: {
+    position: "absolute",
+    width: 14,
+    height: 14,
+    borderRadius: 999,
+    backgroundColor: COLORS.safe,
+    right: -2,
+    bottom: -2,
+    borderWidth: 3,
+    borderColor: COLORS.primary,
+  },
+
+  appName: {
+    fontSize: 38,
+    fontWeight: "800",
     color: COLORS.text,
+    letterSpacing: -1,
     marginBottom: 8,
   },
-  slideText: {
+
+  tagline: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: COLORS.primary,
+    marginBottom: SPACING.md,
+  },
+
+  description: {
     fontSize: 15,
+    lineHeight: 23,
+    textAlign: "center",
     color: COLORS.muted,
-    textAlign: "center",
-    lineHeight: 22,
+    maxWidth: 330,
+    marginBottom: SPACING.xl,
   },
-  dots: {
-    flexDirection: "row",
-    justifyContent: "center",
-    paddingBottom: 18,
-    gap: 8,
-  },
-  dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: COLORS.border,
-  },
-  activeDot: {
-    width: 22,
-    backgroundColor: COLORS.primary,
-  },
-  buttonGroup: {
-    gap: 12,
-  },
-  primaryButton: {
-    backgroundColor: COLORS.text,
-    padding: 17,
-    borderRadius: RADIUS.lg,
-  },
-  primaryButtonText: {
-    color: "#FFFFFF",
-    textAlign: "center",
-    fontSize: 16,
-    fontWeight: "900",
-  },
-  authButton: {
+
+  featureCard: {
+    width: "100%",
     backgroundColor: COLORS.card,
-    padding: 16,
-    borderRadius: RADIUS.lg,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.lg,
     borderWidth: 1,
     borderColor: COLORS.border,
+    marginBottom: SPACING.xl,
+    shadowColor: "#000",
+    shadowOpacity: 0.06,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 3,
   },
-  authButtonText: {
+
+  featureRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: SPACING.md,
+  },
+
+  featureIcon: {
+    width: 10,
+    height: 10,
+    borderRadius: 999,
+    backgroundColor: COLORS.primary,
+    marginRight: SPACING.md,
+  },
+
+  featureText: {
+    fontSize: 14,
+    fontWeight: "600",
     color: COLORS.text,
-    textAlign: "center",
+  },
+
+  primaryButton: {
+    width: "100%",
+    backgroundColor: COLORS.primary,
+    paddingVertical: 17,
+    borderRadius: RADIUS.lg,
+    alignItems: "center",
+    marginBottom: SPACING.md,
+    shadowColor: COLORS.primary,
+    shadowOpacity: 0.28,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 5,
+  },
+
+  primaryButtonPressed: {
+    transform: [{ scale: 0.98 }],
+    opacity: 0.92,
+  },
+
+  primaryButtonText: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "800",
+  },
+
+  secondaryButton: {
+    width: "100%",
+    backgroundColor: "rgba(15, 118, 110, 0.08)",
+    paddingVertical: 16,
+    borderRadius: RADIUS.lg,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "rgba(15, 118, 110, 0.16)",
+  },
+
+  secondaryButtonPressed: {
+    transform: [{ scale: 0.98 }],
+    opacity: 0.85,
+  },
+
+  secondaryButtonText: {
+    color: COLORS.primary,
     fontSize: 15,
     fontWeight: "800",
   },
-  disclaimer: {
-    textAlign: "center",
+
+  footerText: {
+    marginTop: SPACING.lg,
+    fontSize: 12,
     color: COLORS.muted,
-    fontSize: 11,
-    lineHeight: 16,
-    marginTop: 18,
+    textAlign: "center",
   },
 });
