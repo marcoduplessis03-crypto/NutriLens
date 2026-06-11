@@ -1,49 +1,145 @@
-import { router } from "expo-router";
-import React, { useEffect, useRef } from "react";
+import {
+  Cinzel_400Regular,
+  Cinzel_700Bold,
+  useFonts,
+} from "@expo-google-fonts/cinzel";
+import { router, useFocusEffect } from "expo-router";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Animated,
   Dimensions,
   Easing,
+  Image,
   Pressable,
   StatusBar,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+import { getUserProfile, UserProfile } from "../src/storage/profileStorage";
 import { COLORS, RADIUS, SPACING } from "../src/theme";
 
 const { width, height } = Dimensions.get("window");
 
+const eyeLogo = require("../assets/images/nutrilens-eye-logo.png");
+const wordmark = require("../assets/images/nutrilens-wordmark.png");
+
 export default function WelcomeScreen() {
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(30)).current;
-  const pulseAnim = useRef(new Animated.Value(1)).current;
-  const rotateAnim = useRef(new Animated.Value(0)).current;
+ const [fontsLoaded] = useFonts({
+  CinzelRegular: Cinzel_400Regular,
+  CinzelBold: Cinzel_700Bold,
+});
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [introFinished, setIntroFinished] = useState(false);
+
+  const logoY = useRef(new Animated.Value(0)).current;
+  const logoScale = useRef(new Animated.Value(1)).current;
+  const logoFade = useRef(new Animated.Value(1)).current;
+
+  const lettersFade = useRef(new Animated.Value(0)).current;
+  const nMove = useRef(new Animated.Value(0)).current;
+  const lMove = useRef(new Animated.Value(0)).current;
+
+  const welcomeFade = useRef(new Animated.Value(0)).current;
+  const welcomeSlide = useRef(new Animated.Value(25)).current;
+
+  const shapePulse = useRef(new Animated.Value(1)).current;
+
+  useFocusEffect(
+    React.useCallback(() => {
+      async function loadProfile() {
+        const savedProfile = await getUserProfile();
+        setProfile(savedProfile);
+      }
+
+      loadProfile();
+    }, [])
+  );
 
   useEffect(() => {
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 900,
-        useNativeDriver: true,
-      }),
-      Animated.timing(slideAnim, {
-        toValue: 0,
-        duration: 900,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
-      }),
-    ]).start();
+    if (!fontsLoaded) return;
+
+    Animated.sequence([
+      Animated.delay(700),
+
+      Animated.parallel([
+        Animated.timing(logoY, {
+          toValue: -height * 0.22,
+          duration: 750,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+        Animated.timing(logoScale, {
+          toValue: 0.72,
+          duration: 750,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+      ]),
+
+      Animated.delay(250),
+
+      Animated.parallel([
+        Animated.timing(lettersFade, {
+          toValue: 1,
+          duration: 450,
+          useNativeDriver: true,
+        }),
+        Animated.timing(nMove, {
+          toValue: -55,
+          duration: 650,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+        Animated.timing(lMove, {
+          toValue: 55,
+          duration: 650,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+      ]),
+
+      Animated.delay(800),
+
+      Animated.parallel([
+        Animated.timing(logoFade, {
+          toValue: 0,
+          duration: 450,
+          useNativeDriver: true,
+        }),
+        Animated.timing(lettersFade, {
+          toValue: 0,
+          duration: 450,
+          useNativeDriver: true,
+        }),
+      ]),
+    ]).start(() => {
+      setIntroFinished(true);
+
+      Animated.parallel([
+        Animated.timing(welcomeFade, {
+          toValue: 1,
+          duration: 700,
+          useNativeDriver: true,
+        }),
+        Animated.timing(welcomeSlide, {
+          toValue: 0,
+          duration: 700,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+      ]).start();
+    });
 
     Animated.loop(
       Animated.sequence([
-        Animated.timing(pulseAnim, {
-          toValue: 1.08,
+        Animated.timing(shapePulse, {
+          toValue: 1.06,
           duration: 1800,
           easing: Easing.inOut(Easing.ease),
           useNativeDriver: true,
         }),
-        Animated.timing(pulseAnim, {
+        Animated.timing(shapePulse, {
           toValue: 1,
           duration: 1800,
           easing: Easing.inOut(Easing.ease),
@@ -51,120 +147,158 @@ export default function WelcomeScreen() {
         }),
       ])
     ).start();
+  }, [fontsLoaded]);
 
-    Animated.loop(
-      Animated.timing(rotateAnim, {
-        toValue: 1,
-        duration: 18000,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      })
-    ).start();
-  }, []);
+  function handleGetStarted() {
+    if (profile) {
+      router.push("/scanner");
+    } else {
+      router.push("/profile-setup");
+    }
+  }
 
-  const rotation = rotateAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ["0deg", "360deg"],
-  });
+  if (!fontsLoaded) {
+    return <View style={styles.container} />;
+  }
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor={COLORS.background} />
+      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
 
-      {/* Background Shapes */}
-      <Animated.View
-        style={[
-          styles.shapeLarge,
-          {
-            transform: [{ rotate: rotation }, { scale: pulseAnim }],
-          },
-        ]}
-      />
+      {!introFinished && (
+        <View style={styles.introContainer}>
+          <Animated.Image
+            source={eyeLogo}
+            resizeMode="contain"
+            style={[
+              styles.introLogo,
+              {
+                opacity: logoFade,
+                transform: [{ translateY: logoY }, { scale: logoScale }],
+              },
+            ]}
+          />
 
-      <Animated.View
-        style={[
-          styles.shapeMedium,
-          {
-            transform: [{ scale: pulseAnim }],
-          },
-        ]}
-      />
+          <Animated.View style={[styles.lettersContainer, { opacity: lettersFade }]}>
+            <Animated.Text
+              style={[
+                styles.bigLetter,
+                {
+                  transform: [{ translateX: nMove }],
+                },
+              ]}
+            >
+              N
+            </Animated.Text>
 
-      <View style={styles.shapeSmall} />
-      <View style={styles.shapeSoft} />
+            <Animated.Text
+              style={[
+                styles.bigLetter,
+                {
+                  transform: [{ translateX: lMove }],
+                },
+              ]}
+            >
+              L
+            </Animated.Text>
+          </Animated.View>
+        </View>
+      )}
 
-      <Animated.View
-        style={[
-          styles.content,
-          {
-            opacity: fadeAnim,
-            transform: [{ translateY: slideAnim }],
-          },
-        ]}
-      >
-        {/* Logo */}
-        <View style={styles.logoWrapper}>
-          <View style={styles.logoOuter}>
-            <View style={styles.logoLens}>
-              <View style={styles.logoLeaf} />
-              <View style={styles.logoDot} />
+      {introFinished && (
+        <>
+          <Animated.View
+            style={[
+              styles.shapeOne,
+              {
+                transform: [{ scale: shapePulse }],
+              },
+            ]}
+          />
+
+          <Animated.View
+            style={[
+              styles.shapeTwo,
+              {
+                transform: [{ scale: shapePulse }],
+              },
+            ]}
+          />
+
+          <Animated.View
+            style={[
+              styles.welcomeContent,
+              {
+                opacity: welcomeFade,
+                transform: [{ translateY: welcomeSlide }],
+              },
+            ]}
+          >
+            <Image source={wordmark} resizeMode="contain" style={styles.wordmark} />
+
+            <Text style={styles.title}>
+              {profile ? `Welcome, ${profile.name}` : "Welcome"}
+            </Text>
+
+            <Text style={styles.subtitle}>Scan smarter. Eat safer.</Text>
+
+            <Text style={styles.description}>
+              NutriLens checks food products for ingredient and nutrition risks based on
+              your personal health profile.
+            </Text>
+
+            <View style={styles.card}>
+              <View style={styles.cardRow}>
+                <View style={styles.dot} />
+                <Text style={styles.cardText}>Offline profile storage</Text>
+              </View>
+
+              <View style={styles.cardRow}>
+                <View style={styles.dot} />
+                <Text style={styles.cardText}>Condition-specific warnings</Text>
+              </View>
+
+              <View style={styles.cardRow}>
+                <View style={styles.dot} />
+                <Text style={styles.cardText}>Simple barcode scanning</Text>
+              </View>
             </View>
-          </View>
-        </View>
 
-        <Text style={styles.appName}>NutriLens</Text>
+            <Pressable
+              style={({ pressed }) => [
+                styles.primaryButton,
+                pressed && styles.buttonPressed,
+              ]}
+              onPress={handleGetStarted}
+            >
+              <Text style={styles.primaryButtonText}>
+                {profile ? "Continue" : "Get Started"}
+              </Text>
+            </Pressable>
 
-        <Text style={styles.tagline}>
-          Scan smarter. Eat safer.
-        </Text>
+            {profile && (
+              <Pressable
+                style={({ pressed }) => [
+                  styles.secondaryButton,
+                  pressed && styles.buttonPressed,
+                ]}
+                onPress={() =>
+                  router.push({
+                    pathname: "/scanner",
+                    params: { mode: "friend" },
+                  })
+                }
+              >
+                <Text style={styles.secondaryButtonText}>Scan for a Friend</Text>
+              </Pressable>
+            )}
 
-        <Text style={styles.description}>
-          Instantly check food products for condition-specific ingredient and
-          nutrition risks — designed for kidney disease, diabetes, hypertension,
-          heart health, gout and allergies.
-        </Text>
-
-        <View style={styles.featureCard}>
-          <View style={styles.featureRow}>
-            <View style={styles.featureIcon} />
-            <Text style={styles.featureText}>Offline-first health guidance</Text>
-          </View>
-
-          <View style={styles.featureRow}>
-            <View style={styles.featureIcon} />
-            <Text style={styles.featureText}>Barcode-based product checks</Text>
-          </View>
-
-          <View style={styles.featureRow}>
-            <View style={styles.featureIcon} />
-            <Text style={styles.featureText}>Personalized risk warnings</Text>
-          </View>
-        </View>
-
-        <Pressable
-          style={({ pressed }) => [
-            styles.primaryButton,
-            pressed && styles.primaryButtonPressed,
-          ]}
-          onPress={() => router.push("/scanner")}
-        >
-          <Text style={styles.primaryButtonText}>Get Started</Text>
-        </Pressable>
-
-        <Pressable
-          style={({ pressed }) => [
-            styles.secondaryButton,
-            pressed && styles.secondaryButtonPressed,
-          ]}
-          onPress={() => router.push("/(tabs)")}
-        >
-          <Text style={styles.secondaryButtonText}>Scan a Product</Text>
-        </Pressable>
-
-        <Text style={styles.footerText}>
-          No account required. Your selections stay on this device.
-        </Text>
-      </Animated.View>
+            <Text style={styles.footerText}>
+              No account needed. Your profile stays on this device.
+            </Text>
+          </Animated.View>
+        </>
+      )}
     </View>
   );
 }
@@ -172,124 +306,62 @@ export default function WelcomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: "#FFFFFF",
     overflow: "hidden",
   },
 
-  content: {
+  introContainer: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  introLogo: {
+    width: 220,
+    height: 220,
+    position: "absolute",
+  },
+
+  lettersContainer: {
+    position: "absolute",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  bigLetter: {
+    fontFamily: "CinzelBold",
+    fontSize: 86,
+    color: COLORS.primary,
+    letterSpacing: 2,
+  },
+
+  welcomeContent: {
     flex: 1,
     paddingHorizontal: SPACING.xl,
-    paddingTop: height * 0.1,
+    paddingTop: height * 0.08,
     paddingBottom: SPACING.xl,
     alignItems: "center",
     justifyContent: "center",
   },
 
-  shapeLarge: {
-    position: "absolute",
-    width: width * 0.95,
-    height: width * 0.95,
-    borderRadius: width,
-    backgroundColor: "rgba(15, 118, 110, 0.08)",
-    top: -width * 0.35,
-    right: -width * 0.35,
-    borderWidth: 1,
-    borderColor: "rgba(15, 118, 110, 0.14)",
-  },
-
-  shapeMedium: {
-    position: "absolute",
-    width: 220,
-    height: 220,
-    borderRadius: 70,
-    backgroundColor: "rgba(22, 163, 74, 0.08)",
-    bottom: 90,
-    left: -90,
-    transform: [{ rotate: "28deg" }],
-  },
-
-  shapeSmall: {
-    position: "absolute",
-    width: 90,
-    height: 90,
-    borderRadius: 28,
-    backgroundColor: "rgba(234, 179, 8, 0.12)",
-    top: height * 0.2,
-    left: 28,
-    transform: [{ rotate: "18deg" }],
-  },
-
-  shapeSoft: {
-    position: "absolute",
-    width: 150,
-    height: 150,
-    borderRadius: 999,
-    backgroundColor: "rgba(220, 38, 38, 0.05)",
-    bottom: -30,
-    right: -20,
-  },
-
-  logoWrapper: {
+  wordmark: {
+    width: width * 0.78,
+    height: 95,
     marginBottom: SPACING.lg,
   },
 
-  logoOuter: {
-    width: 104,
-    height: 104,
-    borderRadius: 32,
-    backgroundColor: COLORS.primary,
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: COLORS.primary,
-    shadowOpacity: 0.25,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 8,
-  },
-
-  logoLens: {
-    width: 58,
-    height: 58,
-    borderRadius: 999,
-    borderWidth: 5,
-    borderColor: "#FFFFFF",
-    alignItems: "center",
-    justifyContent: "center",
-    position: "relative",
-  },
-
-  logoLeaf: {
-    width: 24,
-    height: 34,
-    borderTopLeftRadius: 18,
-    borderBottomRightRadius: 18,
-    backgroundColor: "#FFFFFF",
-    transform: [{ rotate: "35deg" }],
-  },
-
-  logoDot: {
-    position: "absolute",
-    width: 14,
-    height: 14,
-    borderRadius: 999,
-    backgroundColor: COLORS.safe,
-    right: -2,
-    bottom: -2,
-    borderWidth: 3,
-    borderColor: COLORS.primary,
-  },
-
-  appName: {
-    fontSize: 38,
-    fontWeight: "800",
+  title: {
+    fontFamily: "CinzelBold",
+    fontSize: 30,
     color: COLORS.text,
-    letterSpacing: -1,
+    textAlign: "center",
     marginBottom: 8,
   },
 
-  tagline: {
+  subtitle: {
     fontSize: 18,
-    fontWeight: "700",
+    fontWeight: "800",
     color: COLORS.primary,
     marginBottom: SPACING.md,
   },
@@ -299,11 +371,11 @@ const styles = StyleSheet.create({
     lineHeight: 23,
     textAlign: "center",
     color: COLORS.muted,
-    maxWidth: 330,
+    maxWidth: 340,
     marginBottom: SPACING.xl,
   },
 
-  featureCard: {
+  card: {
     width: "100%",
     backgroundColor: COLORS.card,
     borderRadius: RADIUS.xl,
@@ -318,13 +390,13 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
 
-  featureRow: {
+  cardRow: {
     flexDirection: "row",
     alignItems: "center",
     marginBottom: SPACING.md,
   },
 
-  featureIcon: {
+  dot: {
     width: 10,
     height: 10,
     borderRadius: 999,
@@ -332,9 +404,9 @@ const styles = StyleSheet.create({
     marginRight: SPACING.md,
   },
 
-  featureText: {
+  cardText: {
     fontSize: 14,
-    fontWeight: "600",
+    fontWeight: "700",
     color: COLORS.text,
   },
 
@@ -352,36 +424,31 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
 
-  primaryButtonPressed: {
-    transform: [{ scale: 0.98 }],
-    opacity: 0.92,
-  },
-
   primaryButtonText: {
     color: "#FFFFFF",
     fontSize: 16,
-    fontWeight: "800",
+    fontWeight: "900",
   },
 
   secondaryButton: {
     width: "100%",
     backgroundColor: "rgba(15, 118, 110, 0.08)",
-    paddingVertical: 16,
+    paddingVertical: 15,
     borderRadius: RADIUS.lg,
     alignItems: "center",
     borderWidth: 1,
     borderColor: "rgba(15, 118, 110, 0.16)",
   },
 
-  secondaryButtonPressed: {
-    transform: [{ scale: 0.98 }],
-    opacity: 0.85,
-  },
-
   secondaryButtonText: {
     color: COLORS.primary,
     fontSize: 15,
-    fontWeight: "800",
+    fontWeight: "900",
+  },
+
+  buttonPressed: {
+    transform: [{ scale: 0.98 }],
+    opacity: 0.9,
   },
 
   footerText: {
@@ -389,5 +456,26 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: COLORS.muted,
     textAlign: "center",
+  },
+
+  shapeOne: {
+    position: "absolute",
+    width: 280,
+    height: 280,
+    borderRadius: 140,
+    backgroundColor: "rgba(15, 118, 110, 0.06)",
+    top: -80,
+    right: -90,
+  },
+
+  shapeTwo: {
+    position: "absolute",
+    width: 210,
+    height: 210,
+    borderRadius: 80,
+    backgroundColor: "rgba(22, 163, 74, 0.07)",
+    bottom: 70,
+    left: -90,
+    transform: [{ rotate: "24deg" }],
   },
 });
