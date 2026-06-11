@@ -69,6 +69,19 @@ export async function signOutUser() {
   await AsyncStorage.removeItem(ACTIVE_PROFILE_KEY);
 }
 
+export async function deleteProfile(profileId: string) {
+  const profiles = await getUserProfiles();
+  const activeProfileId = await getActiveProfileId();
+
+  const updatedProfiles = profiles.filter((profile) => profile.id !== profileId);
+
+  await AsyncStorage.setItem(PROFILES_KEY, JSON.stringify(updatedProfiles));
+
+  if (activeProfileId === profileId) {
+    await AsyncStorage.removeItem(ACTIVE_PROFILE_KEY);
+  }
+}
+
 export async function deleteAllProfiles() {
   await AsyncStorage.removeItem(PROFILES_KEY);
   await AsyncStorage.removeItem(ACTIVE_PROFILE_KEY);

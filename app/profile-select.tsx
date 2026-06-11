@@ -1,20 +1,21 @@
 import { router, useFocusEffect } from "expo-router";
 import React, { useCallback, useState } from "react";
 import {
-    Alert,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View,
+  Alert,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
 } from "react-native";
 
 import {
-    getActiveProfileId,
-    getUserProfiles,
-    setActiveProfile,
-    signOutUser,
-    UserProfile,
+  deleteProfile,
+  getActiveProfileId,
+  getUserProfiles,
+  setActiveProfile,
+  signOutUser,
+  UserProfile,
 } from "../src/storage/profileStorage";
 import { COLORS, RADIUS, SPACING } from "../src/theme";
 
@@ -38,7 +39,7 @@ export default function ProfileSelectScreen() {
 
   async function handleSelectProfile(profileId: string) {
     await setActiveProfile(profileId);
-    router.replace("/profile-select")
+    router.replace("/scanner");
   }
 
   function handleNewProfile() {
@@ -52,6 +53,33 @@ export default function ProfileSelectScreen() {
     Alert.alert(
       "Signed out",
       "No profile is currently selected. Your local profiles are still saved."
+    );
+  }
+
+  function confirmDeleteProfile(profile: UserProfile) {
+    const isActive = profile.id === activeProfileId;
+
+    Alert.alert(
+      "Delete profile?",
+      `Hold up — this will permanently delete "${profile.name}" from this phone.${
+        isActive
+          ? " This is your active profile, so you will need to choose or create another one before scanning."
+          : ""
+      } Scan history will stay saved.`,
+      [
+        {
+          text: "Cancel",
+          style: "cancel",
+        },
+        {
+          text: "Delete Profile",
+          style: "destructive",
+          onPress: async () => {
+            await deleteProfile(profile.id);
+            await loadProfiles();
+          },
+        },
+      ]
     );
   }
 
@@ -81,13 +109,29 @@ export default function ProfileSelectScreen() {
               <Pressable
                 key={profile.id}
                 onPress={() => handleSelectProfile(profile.id)}
-                style={[
+                onLongPress={() => confirmDeleteProfile(profile)}
+                delayLongPress={500}
+                style={({ pressed }) => [
                   styles.profileCard,
                   isActive && styles.profileCardActive,
+                  pressed && styles.profileCardPressed,
                 ]}
               >
                 <View style={styles.profileTopRow}>
-                  <Text style={styles.profileName}>{profile.name}</Text>
+                  <View style={styles.avatarCircle}>
+                    <Text style={styles.avatarText}>
+                      {profile.name.trim().charAt(0).toUpperCase() || "N"}
+                    </Text>
+                  </View>
+
+                  <View style={styles.profileTextWrap}>
+                    <Text style={styles.profileName}>{profile.name}</Text>
+
+                    <Text style={styles.profileMeta}>
+                      Watching {profile.avoidIds.length} item
+                      {profile.avoidIds.length === 1 ? "" : "s"}
+                    </Text>
+                  </View>
 
                   {isActive && (
                     <View style={styles.activeBadge}>
@@ -96,12 +140,13 @@ export default function ProfileSelectScreen() {
                   )}
                 </View>
 
-                <Text style={styles.profileMeta}>
-                  Watching {profile.avoidIds.length} item
-                  {profile.avoidIds.length === 1 ? "" : "s"}
-                </Text>
+                <View style={styles.profileFooter}>
+                  <Text style={styles.profileHint}>
+                    Tap to use • Hold to delete
+                  </Text>
 
-                <Text style={styles.profileHint}>Tap to use this profile</Text>
+                  <Text style={styles.deleteHint}>🗑️</Text>
+                </View>
               </Pressable>
             );
           })}
@@ -185,18 +230,46 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(15, 118, 110, 0.08)",
   },
 
+  profileCardPressed: {
+    opacity: 0.85,
+    transform: [{ scale: 0.99 }],
+  },
+
   profileTopRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
     gap: SPACING.md,
   },
 
-  profileName: {
+  avatarCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: COLORS.primary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  avatarText: {
+    color: "#FFFFFF",
+    fontSize: 18,
+    fontWeight: "900",
+  },
+
+  profileTextWrap: {
     flex: 1,
+  },
+
+  profileName: {
     fontSize: 18,
     fontWeight: "900",
     color: COLORS.text,
+  },
+
+  profileMeta: {
+    fontSize: 14,
+    color: COLORS.muted,
+    marginTop: 4,
   },
 
   activeBadge: {
@@ -212,17 +285,24 @@ const styles = StyleSheet.create({
     fontWeight: "900",
   },
 
-  profileMeta: {
-    fontSize: 14,
-    color: COLORS.muted,
-    marginTop: 8,
+  profileFooter: {
+    marginTop: SPACING.md,
+    paddingTop: SPACING.md,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
 
   profileHint: {
     fontSize: 13,
     color: COLORS.primary,
     fontWeight: "800",
-    marginTop: 10,
+  },
+
+  deleteHint: {
+    fontSize: 16,
   },
 
   primaryButton: {

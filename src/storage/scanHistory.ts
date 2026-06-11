@@ -2,6 +2,19 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const HISTORY_KEY = "@nutrilens_scan_history";
 
+export type IngredientMatch = {
+  avoidId: string;
+  label: string;
+  matchedKeywords: string[];
+};
+
+export type NutrientNotice = {
+  id: string;
+  label: string;
+  value: string;
+  note: string;
+};
+
 export type ScanHistoryItem = {
   id: string;
   barcode: string;
@@ -9,16 +22,26 @@ export type ScanHistoryItem = {
   brand?: string;
   imageUrl?: string;
 
-  riskScore: number;
-  riskLevel: string;
-  warningCount: number;
-  warnings: string[];
+  profileName?: string;
+  avoidIds: string[];
+  matchCount: number;
+  ingredientMatches: IngredientMatch[];
+  nutrientNotices: NutrientNotice[];
 
-  conditions: string[];
   scannedAt: string;
 
   ingredients?: string;
   nutriments?: Record<string, any>;
+
+  /**
+   * Old fields kept optional so old saved scans do not crash the app.
+   * Do not use these in the new UI.
+   */
+  riskScore?: number;
+  riskLevel?: string;
+  warningCount?: number;
+  warnings?: string[];
+  conditions?: string[];
   riskReasons?: string[];
 };
 
@@ -66,10 +89,7 @@ export async function saveScanToHistory(
 
     const updatedHistory = [newScan, ...currentHistory].slice(0, 100);
 
-    await AsyncStorage.setItem(
-      HISTORY_KEY,
-      JSON.stringify(updatedHistory)
-    );
+    await AsyncStorage.setItem(HISTORY_KEY, JSON.stringify(updatedHistory));
   } catch (error) {
     console.error("Could not save scan history:", error);
   }
@@ -79,14 +99,9 @@ export async function deleteHistoryItem(id: string): Promise<void> {
   try {
     const currentHistory = await getScanHistory();
 
-    const updatedHistory = currentHistory.filter(
-      (item) => item.id !== id
-    );
+    const updatedHistory = currentHistory.filter((item) => item.id !== id);
 
-    await AsyncStorage.setItem(
-      HISTORY_KEY,
-      JSON.stringify(updatedHistory)
-    );
+    await AsyncStorage.setItem(HISTORY_KEY, JSON.stringify(updatedHistory));
   } catch (error) {
     console.error("Could not delete history item:", error);
   }

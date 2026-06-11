@@ -16,6 +16,7 @@ import {
   Text,
   View,
 } from "react-native";
+
 import { getUserProfile, UserProfile } from "../src/storage/profileStorage";
 import { COLORS, RADIUS, SPACING } from "../src/theme";
 
@@ -25,10 +26,11 @@ const eyeLogo = require("../assets/images/nutrilens-eye-logo.png");
 const wordmark = require("../assets/images/nutrilens-wordmark.png");
 
 export default function WelcomeScreen() {
- const [fontsLoaded] = useFonts({
-  CinzelRegular: Cinzel_400Regular,
-  CinzelBold: Cinzel_700Bold,
-});
+  const [fontsLoaded] = useFonts({
+    CinzelRegular: Cinzel_400Regular,
+    CinzelBold: Cinzel_700Bold,
+  });
+
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [introFinished, setIntroFinished] = useState(false);
 
@@ -157,6 +159,10 @@ export default function WelcomeScreen() {
     }
   }
 
+  function handleSelectProfile() {
+    router.push("/profile-select");
+  }
+
   if (!fontsLoaded) {
     return <View style={styles.container} />;
   }
@@ -179,7 +185,9 @@ export default function WelcomeScreen() {
             ]}
           />
 
-          <Animated.View style={[styles.lettersContainer, { opacity: lettersFade }]}>
+          <Animated.View
+            style={[styles.lettersContainer, { opacity: lettersFade }]}
+          >
             <Animated.Text
               style={[
                 styles.bigLetter,
@@ -234,28 +242,32 @@ export default function WelcomeScreen() {
               },
             ]}
           >
-            <Image source={wordmark} resizeMode="contain" style={styles.wordmark} />
+            <Image
+              source={wordmark}
+              resizeMode="contain"
+              style={styles.wordmark}
+            />
 
             <Text style={styles.title}>
               {profile ? `Welcome, ${profile.name}` : "Welcome"}
             </Text>
 
-            <Text style={styles.subtitle}>Scan smarter. Eat safer.</Text>
+            <Text style={styles.subtitle}>Scan smarter. Check labels faster.</Text>
 
             <Text style={styles.description}>
-              NutriLens checks food products for ingredient and nutrition risks based on
-              your personal health profile.
+              NutriLens helps you scan food products, flag ingredients you choose
+              to avoid, and view basic nutrient awareness information.
             </Text>
 
             <View style={styles.card}>
               <View style={styles.cardRow}>
                 <View style={styles.dot} />
-                <Text style={styles.cardText}>Offline profile storage</Text>
+                <Text style={styles.cardText}>Local profile storage</Text>
               </View>
 
               <View style={styles.cardRow}>
                 <View style={styles.dot} />
-                <Text style={styles.cardText}>Condition-specific warnings</Text>
+                <Text style={styles.cardText}>Personal avoid-list checks</Text>
               </View>
 
               <View style={styles.cardRow}>
@@ -272,29 +284,22 @@ export default function WelcomeScreen() {
               onPress={handleGetStarted}
             >
               <Text style={styles.primaryButtonText}>
-                {profile ? "Continue" : "Get Started"}
+                {profile ? "Continue to Scanner" : "Create Profile"}
               </Text>
             </Pressable>
 
-            {profile && (
-              <Pressable
-                style={({ pressed }) => [
-                  styles.secondaryButton,
-                  pressed && styles.buttonPressed,
-                ]}
-                onPress={() =>
-                  router.push({
-                    pathname: "/scanner",
-                    params: { mode: "friend" },
-                  })
-                }
-              >
-                <Text style={styles.secondaryButtonText}>Scan for a Friend</Text>
-              </Pressable>
-            )}
+            <Pressable
+              style={({ pressed }) => [
+                styles.secondaryButton,
+                pressed && styles.buttonPressed,
+              ]}
+              onPress={handleSelectProfile}
+            >
+              <Text style={styles.secondaryButtonText}>Select Profile</Text>
+            </Pressable>
 
             <Text style={styles.footerText}>
-              No account needed. Your profile stays on this device.
+              No account needed. Your profiles stay on this device.
             </Text>
           </Animated.View>
         </>
