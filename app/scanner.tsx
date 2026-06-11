@@ -4,6 +4,7 @@ import { useCallback, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Image,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -598,6 +599,12 @@ export default function ScannerScreen() {
   if (phase === "not-found") {
     return (
       <ScrollView contentContainerStyle={styles.center}>
+        <Pressable
+  style={styles.profileManageButton}
+  onPress={() => router.push("/profile-manage")}
+>
+  <Text style={styles.profileManageButtonText}>⚙️</Text>
+</Pressable>
         <Text style={styles.stateEmoji}>🔎</Text>
         <Text style={styles.stateTitle}>Product not found</Text>
         <Text style={styles.barcodeDisplay}>Barcode: {barcode}</Text>
@@ -1261,4 +1268,27 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     textAlign: "center",
   },
+  profileManageButton: {
+  position: "absolute",
+  top: 56,
+  right: 20,
+  width: 44,
+  height: 44,
+  borderRadius: 22,
+  backgroundColor: COLORS.card,
+  borderWidth: 1,
+  borderColor: COLORS.border,
+  alignItems: "center",
+  justifyContent: "center",
+  zIndex: 50,
+  shadowColor: "#000",
+  shadowOpacity: 0.08,
+  shadowRadius: 10,
+  shadowOffset: { width: 0, height: 5 },
+  elevation: 4,
+},
+
+profileManageButtonText: {
+  fontSize: 20,
+},
 });

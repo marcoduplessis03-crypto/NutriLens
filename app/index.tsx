@@ -39,8 +39,11 @@ export default function WelcomeScreen() {
   const logoFade = useRef(new Animated.Value(1)).current;
 
   const lettersFade = useRef(new Animated.Value(0)).current;
-  const nMove = useRef(new Animated.Value(0)).current;
-  const lMove = useRef(new Animated.Value(0)).current;
+  const nScale = useRef(new Animated.Value(1)).current;
+  const lScale = useRef(new Animated.Value(1)).current;
+
+  const middleFade = useRef(new Animated.Value(0)).current;
+  const middleSlide = useRef(new Animated.Value(12)).current;
 
   const welcomeFade = useRef(new Animated.Value(0)).current;
   const welcomeSlide = useRef(new Animated.Value(25)).current;
@@ -60,6 +63,22 @@ export default function WelcomeScreen() {
 
   useEffect(() => {
     if (!fontsLoaded) return;
+
+    setIntroFinished(false);
+
+    logoY.setValue(0);
+    logoScale.setValue(1);
+    logoFade.setValue(1);
+
+    lettersFade.setValue(0);
+    nScale.setValue(1);
+    lScale.setValue(1);
+
+    middleFade.setValue(0);
+    middleSlide.setValue(12);
+
+    welcomeFade.setValue(0);
+    welcomeSlide.setValue(25);
 
     Animated.sequence([
       Animated.delay(700),
@@ -84,24 +103,36 @@ export default function WelcomeScreen() {
       Animated.parallel([
         Animated.timing(lettersFade, {
           toValue: 1,
-          duration: 450,
+          duration: 350,
           useNativeDriver: true,
         }),
-        Animated.timing(nMove, {
-          toValue: -55,
-          duration: 650,
+        Animated.timing(nScale, {
+          toValue: 0.9,
+          duration: 850,
           easing: Easing.out(Easing.cubic),
           useNativeDriver: true,
         }),
-        Animated.timing(lMove, {
-          toValue: 55,
-          duration: 650,
+        Animated.timing(lScale, {
+          toValue: 0.9,
+          duration: 850,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+        Animated.timing(middleFade, {
+          toValue: 1,
+          duration: 850,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+        Animated.timing(middleSlide, {
+          toValue: 0,
+          duration: 850,
           easing: Easing.out(Easing.cubic),
           useNativeDriver: true,
         }),
       ]),
 
-      Animated.delay(800),
+      Animated.delay(900),
 
       Animated.parallel([
         Animated.timing(logoFade, {
@@ -110,6 +141,11 @@ export default function WelcomeScreen() {
           useNativeDriver: true,
         }),
         Animated.timing(lettersFade, {
+          toValue: 0,
+          duration: 450,
+          useNativeDriver: true,
+        }),
+        Animated.timing(middleFade, {
           toValue: 0,
           duration: 450,
           useNativeDriver: true,
@@ -171,6 +207,15 @@ export default function WelcomeScreen() {
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
 
+      {introFinished && (
+        <Pressable
+          style={styles.profileManageButton}
+          onPress={() => router.push("/profile-manage")}
+        >
+          <Text style={styles.profileManageButtonText}>⚙️</Text>
+        </Pressable>
+      )}
+
       {!introFinished && (
         <View style={styles.introContainer}>
           <Animated.Image
@@ -185,30 +230,56 @@ export default function WelcomeScreen() {
             ]}
           />
 
-          <Animated.View
-            style={[styles.lettersContainer, { opacity: lettersFade }]}
-          >
-            <Animated.Text
-              style={[
-                styles.bigLetter,
-                {
-                  transform: [{ translateX: nMove }],
-                },
-              ]}
-            >
-              N
-            </Animated.Text>
+          <Animated.View style={styles.lettersContainer}>
+            <View style={styles.wordBuildRow}>
+              <Animated.Text
+                style={[
+                  styles.bigLetter,
+                  {
+                    opacity: lettersFade,
+                    transform: [{ scale: nScale }],
+                  },
+                ]}
+              >
+                N
+              </Animated.Text>
 
-            <Animated.Text
-              style={[
-                styles.bigLetter,
-                {
-                  transform: [{ translateX: lMove }],
-                },
-              ]}
-            >
-              L
-            </Animated.Text>
+              <Animated.Text
+                style={[
+                  styles.wordPart,
+                  {
+                    opacity: middleFade,
+                    transform: [{ translateY: middleSlide }],
+                  },
+                ]}
+              >
+                utri
+              </Animated.Text>
+
+              <Animated.Text
+                style={[
+                  styles.bigLetter,
+                  {
+                    opacity: lettersFade,
+                    transform: [{ scale: lScale }],
+                  },
+                ]}
+              >
+                L
+              </Animated.Text>
+
+              <Animated.Text
+                style={[
+                  styles.wordPart,
+                  {
+                    opacity: middleFade,
+                    transform: [{ translateY: middleSlide }],
+                  },
+                ]}
+              >
+                ens
+              </Animated.Text>
+            </View>
           </Animated.View>
         </View>
       )}
@@ -329,16 +400,29 @@ const styles = StyleSheet.create({
 
   lettersContainer: {
     position: "absolute",
-    flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
+    width: "100%",
+  },
+
+  wordBuildRow: {
+    flexDirection: "row",
+    alignItems: "baseline",
     justifyContent: "center",
   },
 
   bigLetter: {
     fontFamily: "CinzelBold",
-    fontSize: 86,
+    fontSize: 80,
     color: COLORS.primary,
-    letterSpacing: 2,
+    letterSpacing: 0,
+  },
+
+  wordPart: {
+    fontFamily: "CinzelBold",
+    fontSize: 42,
+    color: COLORS.primary,
+    marginHorizontal: -3,
   },
 
   welcomeContent: {
@@ -461,6 +545,30 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: COLORS.muted,
     textAlign: "center",
+  },
+
+  profileManageButton: {
+    position: "absolute",
+    top: 56,
+    right: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 50,
+    shadowColor: "#000",
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 4,
+  },
+
+  profileManageButtonText: {
+    fontSize: 20,
   },
 
   shapeOne: {

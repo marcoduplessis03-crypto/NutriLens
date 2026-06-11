@@ -13,6 +13,11 @@ type NewUserProfile = {
   createdAt: string;
 };
 
+type ProfileUpdates = {
+  name?: string;
+  avoidIds?: string[];
+};
+
 const PROFILES_KEY = "nutrilens_user_profiles";
 const ACTIVE_PROFILE_KEY = "nutrilens_active_profile_id";
 
@@ -44,6 +49,28 @@ export async function saveUserProfile(profile: NewUserProfile) {
   await AsyncStorage.setItem(ACTIVE_PROFILE_KEY, newProfile.id);
 
   return newProfile;
+}
+
+export async function updateUserProfile(
+  profileId: string,
+  updates: ProfileUpdates
+) {
+  const profiles = await getUserProfiles();
+
+  const updatedProfiles = profiles.map((profile) => {
+    if (profile.id !== profileId) {
+      return profile;
+    }
+
+    return {
+      ...profile,
+      ...updates,
+    };
+  });
+
+  await AsyncStorage.setItem(PROFILES_KEY, JSON.stringify(updatedProfiles));
+
+  return updatedProfiles.find((profile) => profile.id === profileId) || null;
 }
 
 export async function setActiveProfile(profileId: string) {
