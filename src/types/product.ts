@@ -1,4 +1,4 @@
-export type ProductSource = "Open Food Facts" | "USDA FoodData Central";
+export type ProductSource = "Open Food Facts";
 
 export type NormalizedProduct = {
   barcode: string;
