@@ -1,5 +1,5 @@
 import { CameraView, useCameraPermissions } from "expo-camera";
-import { useFocusEffect, useLocalSearchParams } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { useCallback, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -12,30 +12,108 @@ import {
 } from "react-native";
 
 import { lookupProduct, LookupStage } from "../src/api/productLookup";
-import { buildWarningStrings } from "../src/evaluateProduct";
-import { calculateRisk } from "../src/riskEngine";
+import { getUserProfile } from "../src/storage/profileStorage";
 import { saveScanToHistory } from "../src/storage/scanHistory";
-import {
-  COLORS,
-  RADIUS,
-  verdictBackground,
-  verdictColor,
-} from "../src/theme";
-import { NormalizedProduct, RiskResult, RiskVerdict } from "../src/types/product";
+import { COLORS, RADIUS } from "../src/theme";
+import { NormalizedProduct } from "../src/types/product";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const BARCODE_CONFIRMATION_MS = 1200;
 
-const EMPTY_RISK: RiskResult = {
-  score: 0,
-  verdict: "Recommended",
-  findings: [],
-  reasons: [],
-  redFlags: [],
-};
-
-// ─── Types ───────────────────────────────────────────────────────────────────
+const AVOID_OPTIONS = [
+  {
+    id: "phosphates",
+    label: "Phosphates",
+    keywords: [
+      "phosphate",
+      "phosphates",
+      "phosphoric acid",
+      "diphosphate",
+      "triphosphate",
+      "polyphosphate",
+      "e338",
+      "e339",
+      "e340",
+      "e341",
+      "e450",
+      "e451",
+      "e452",
+    ],
+  },
+  {
+    id: "potassiumAdditives",
+    label: "Potassium additives",
+    keywords: [
+      "potassium chloride",
+      "potassium phosphate",
+      "potassium sorbate",
+      "potassium citrate",
+      "potassium bicarbonate",
+      "potassium carbonate",
+    ],
+  },
+  {
+    id: "sodium",
+    label: "Sodium / salt",
+    keywords: ["salt", "sodium chloride", "sea salt", "sodium bicarbonate"],
+  },
+  {
+    id: "addedSugars",
+    label: "Added sugars",
+    keywords: [
+      "sugar",
+      "glucose",
+      "fructose",
+      "sucrose",
+      "syrup",
+      "corn syrup",
+      "maltodextrin",
+      "dextrose",
+      "honey",
+      "molasses",
+    ],
+  },
+  {
+    id: "gluten",
+    label: "Gluten / wheat",
+    keywords: ["wheat", "gluten", "barley", "rye", "malt"],
+  },
+  {
+    id: "dairy",
+    label: "Milk / dairy",
+    keywords: ["milk", "whey", "casein", "lactose", "cream", "butter"],
+  },
+  {
+    id: "nuts",
+    label: "Nuts",
+    keywords: [
+      "peanut",
+      "almond",
+      "cashew",
+      "hazelnut",
+      "walnut",
+      "pecan",
+      "pistachio",
+      "macadamia",
+    ],
+  },
+  {
+    id: "caffeine",
+    label: "Caffeine",
+    keywords: ["caffeine", "guarana", "coffee extract", "tea extract"],
+  },
+  {
+    id: "yeastExtract",
+    label: "Yeast extract",
+    keywords: ["yeast extract", "autolyzed yeast", "hydrolyzed yeast"],
+  },
+  {
+    id: "msg",
+    label: "MSG",
+    keywords: ["msg", "monosodium glutamate", "e621"],
+  },
+];
 
 type ScannerPhase =
   | "camera"
@@ -45,40 +123,133 @@ type ScannerPhase =
   | "not-found"
   | "error";
 
+type IngredientMatch = {
+  id: string;
+  label: string;
+  matchedTerms: string[];
+};
+
+type NutrientNotice = {
+  nutrient: string;
+  value: string;
+  message: string;
+};
+
+type NutrientLevel = "Higher" | "Moderate" | "Lower" | "Unknown";
+
 // ─── Utilities ───────────────────────────────────────────────────────────────
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function verdictGuidance(verdict: RiskVerdict): string {
-  switch (verdict) {
-    case "Not Recommended":
-      return "One or more significant concerns were detected for your selected health profile. Review the product label and seek personalised medical or dietetic advice.";
-    case "Use With Caution":
-      return "This product contains nutritional characteristics that may require moderation. Consider portion size, frequency and your individual dietary limits.";
-    case "Low Risk":
-      return "Only minor concerns were detected based on the available product information.";
-    default:
-      return "No major concerns were detected for your selected health profile using the available data.";
-  }
+function getOptionLabel(id: string) {
+  return AVOID_OPTIONS.find((item) => item.id === id)?.label || id;
 }
 
-type NutrientLevel = "High" | "Moderate" | "Low" | "Unknown";
+function getMatchSummary(matchCount: number): string {
+  if (matchCount === 0) {
+    return "No selected avoided ingredients found";
+  }
 
-function nutrientLevel(value: number | null, moderate: number, high: number): NutrientLevel {
+  if (matchCount === 1) {
+    return "1 selected avoided ingredient found";
+  }
+
+  return `${matchCount} selected avoided ingredients found`;
+}
+
+function findIngredientMatches(
+  ingredientsText: string,
+  selectedAvoidIds: string[]
+): IngredientMatch[] {
+  const text = ingredientsText.toLowerCase();
+
+  return AVOID_OPTIONS.filter((item) => selectedAvoidIds.includes(item.id))
+    .map((item) => {
+      const matchedTerms = item.keywords.filter((keyword) =>
+        text.includes(keyword.toLowerCase())
+      );
+
+      return {
+        id: item.id,
+        label: item.label,
+        matchedTerms,
+      };
+    })
+    .filter((match) => match.matchedTerms.length > 0);
+}
+
+function getSodiumMg(nutriments: any): number | null {
+  if (nutriments?.sodium_100g != null) {
+    return Math.round(nutriments.sodium_100g * 1000);
+  }
+
+  if (nutriments?.salt_100g != null) {
+    return Math.round(nutriments.salt_100g * 400);
+  }
+
+  return null;
+}
+
+function getNutrientNotices(nutriments: any): NutrientNotice[] {
+  const notices: NutrientNotice[] = [];
+
+  const sodiumMg = getSodiumMg(nutriments);
+
+  if (sodiumMg != null && sodiumMg > 400) {
+    notices.push({
+      nutrient: "Sodium",
+      value: `${sodiumMg} mg per 100 g/ml`,
+      message: "Higher sodium level noticed.",
+    });
+  }
+
+  if (nutriments?.sugars_100g != null && nutriments.sugars_100g > 10) {
+    notices.push({
+      nutrient: "Sugar",
+      value: `${Math.round(nutriments.sugars_100g * 10) / 10} g per 100 g/ml`,
+      message: "Higher sugar level noticed.",
+    });
+  }
+
+  if (
+    nutriments?.["saturated-fat_100g"] != null &&
+    nutriments["saturated-fat_100g"] > 5
+  ) {
+    notices.push({
+      nutrient: "Saturated fat",
+      value: `${
+        Math.round(nutriments["saturated-fat_100g"] * 10) / 10
+      } g per 100 g/ml`,
+      message: "Higher saturated fat level noticed.",
+    });
+  }
+
+  return notices;
+}
+
+function nutrientLevel(
+  value: number | null,
+  moderate: number,
+  high: number
+): NutrientLevel {
   if (value == null) return "Unknown";
-  if (value >= high) return "High";
+  if (value >= high) return "Higher";
   if (value >= moderate) return "Moderate";
-  return "Low";
+  return "Lower";
 }
 
 function nutrientBadgeColors(level: NutrientLevel): { bg: string; fg: string } {
   switch (level) {
-    case "High":     return { bg: COLORS.highSubtle,     fg: COLORS.high };
-    case "Moderate": return { bg: COLORS.moderateSubtle, fg: COLORS.moderate };
-    case "Low":      return { bg: COLORS.safeSubtle,     fg: COLORS.safe };
-    default:         return { bg: "#F1F5F9",              fg: COLORS.muted };
+    case "Higher":
+      return { bg: COLORS.highSubtle, fg: COLORS.high };
+    case "Moderate":
+      return { bg: COLORS.moderateSubtle, fg: COLORS.moderate };
+    case "Lower":
+      return { bg: COLORS.safeSubtle, fg: COLORS.safe };
+    default:
+      return { bg: "#F1F5F9", fg: COLORS.muted };
   }
 }
 
@@ -108,6 +279,7 @@ function NutrientRow({
           {value == null ? "Not available" : `${value} ${unit}`}
         </Text>
       </View>
+
       <View style={[styles.nutrientBadge, { backgroundColor: bg }]}>
         <Text style={[styles.nutrientBadgeText, { color: fg }]}>{level}</Text>
       </View>
@@ -115,7 +287,6 @@ function NutrientRow({
   );
 }
 
-/** Corner-bracket scan frame — more polished than a plain border box */
 function ScanFrame() {
   const SIZE = 260;
   const ARM = 36;
@@ -123,11 +294,18 @@ function ScanFrame() {
   const COLOR = "#FFFFFF";
 
   const corner = (position: {
-    top?: number; bottom?: number; left?: number; right?: number;
-    borderTopWidth?: number; borderBottomWidth?: number;
-    borderLeftWidth?: number; borderRightWidth?: number;
-    borderTopLeftRadius?: number; borderTopRightRadius?: number;
-    borderBottomLeftRadius?: number; borderBottomRightRadius?: number;
+    top?: number;
+    bottom?: number;
+    left?: number;
+    right?: number;
+    borderTopWidth?: number;
+    borderBottomWidth?: number;
+    borderLeftWidth?: number;
+    borderRightWidth?: number;
+    borderTopLeftRadius?: number;
+    borderTopRightRadius?: number;
+    borderBottomLeftRadius?: number;
+    borderBottomRightRadius?: number;
   }) => ({
     position: "absolute" as const,
     width: ARM,
@@ -139,14 +317,42 @@ function ScanFrame() {
 
   return (
     <View style={{ width: SIZE, height: SIZE / 2, position: "relative" }}>
-      {/* top-left */}
-      <View style={corner({ top: 0, left: 0, borderTopWidth: THICKNESS, borderLeftWidth: THICKNESS, borderTopLeftRadius: 8 })} />
-      {/* top-right */}
-      <View style={corner({ top: 0, right: 0, borderTopWidth: THICKNESS, borderRightWidth: THICKNESS, borderTopRightRadius: 8 })} />
-      {/* bottom-left */}
-      <View style={corner({ bottom: 0, left: 0, borderBottomWidth: THICKNESS, borderLeftWidth: THICKNESS, borderBottomLeftRadius: 8 })} />
-      {/* bottom-right */}
-      <View style={corner({ bottom: 0, right: 0, borderBottomWidth: THICKNESS, borderRightWidth: THICKNESS, borderBottomRightRadius: 8 })} />
+      <View
+        style={corner({
+          top: 0,
+          left: 0,
+          borderTopWidth: THICKNESS,
+          borderLeftWidth: THICKNESS,
+          borderTopLeftRadius: 8,
+        })}
+      />
+      <View
+        style={corner({
+          top: 0,
+          right: 0,
+          borderTopWidth: THICKNESS,
+          borderRightWidth: THICKNESS,
+          borderTopRightRadius: 8,
+        })}
+      />
+      <View
+        style={corner({
+          bottom: 0,
+          left: 0,
+          borderBottomWidth: THICKNESS,
+          borderLeftWidth: THICKNESS,
+          borderBottomLeftRadius: 8,
+        })}
+      />
+      <View
+        style={corner({
+          bottom: 0,
+          right: 0,
+          borderBottomWidth: THICKNESS,
+          borderRightWidth: THICKNESS,
+          borderBottomRightRadius: 8,
+        })}
+      />
     </View>
   );
 }
@@ -154,7 +360,6 @@ function ScanFrame() {
 // ─── Screen ──────────────────────────────────────────────────────────────────
 
 export default function ScannerScreen() {
-  const { conditions } = useLocalSearchParams();
   const [permission, requestPermission] = useCameraPermissions();
 
   const scanLock = useRef(false);
@@ -166,20 +371,36 @@ export default function ScannerScreen() {
   const [lookupText, setLookupText] = useState("");
   const [attemptedSources, setAttemptedSources] = useState<string[]>([]);
   const [product, setProduct] = useState<NormalizedProduct | null>(null);
-  const [warnings, setWarnings] = useState<string[]>([]);
-  const [risk, setRisk] = useState<RiskResult>(EMPTY_RISK);
 
-  const selectedConditions = String(conditions || "")
-    .split(",")
-    .map((c) => c.trim())
-    .filter(Boolean);
+  const [profileName, setProfileName] = useState("");
+  const [selectedAvoidIds, setSelectedAvoidIds] = useState<string[]>([]);
+  const [ingredientMatches, setIngredientMatches] = useState<IngredientMatch[]>(
+    []
+  );
+  const [nutrientNotices, setNutrientNotices] = useState<NutrientNotice[]>([]);
 
   useFocusEffect(
     useCallback(() => {
       resetScanner();
-      return () => { scanLock.current = true; };
+      loadProfile();
+
+      return () => {
+        scanLock.current = true;
+      };
     }, [])
   );
+
+  async function loadProfile() {
+    const profile = await getUserProfile();
+
+    if (!profile) {
+      router.replace("/profile-setup");
+      return;
+    }
+
+    setProfileName(profile.name);
+    setSelectedAvoidIds(profile.avoidIds || []);
+  }
 
   function resetScanner() {
     scanLock.current = false;
@@ -189,20 +410,18 @@ export default function ScannerScreen() {
     setLookupText("");
     setAttemptedSources([]);
     setProduct(null);
-    setWarnings([]);
-    setRisk(EMPTY_RISK);
+    setIngredientMatches([]);
+    setNutrientNotices([]);
     setCameraKey((k) => k + 1);
   }
 
   function handleLookupStage(stage: LookupStage) {
-    if (stage === "open-food-facts") {
-      setLookupText("Checking Open Food Facts…");
-    } else if (stage === "usda") {
-      setLookupText("Checking USDA FoodData Central…");
-    } else {
-      setLookupText("Finishing product analysis…");
-    }
+  if (stage === "open-food-facts") {
+    setLookupText("Checking Open Food Facts…");
+  } else {
+    setLookupText("Checking product label data…");
   }
+}
 
   async function handleBarcodeScanned(result: { data?: string }) {
     if (scanLock.current) return;
@@ -230,18 +449,17 @@ export default function ScannerScreen() {
       }
 
       const p = lookup.product;
-      const productForRules = {
-        product_name: p.name,
-        ingredients_text: p.ingredients,
-        nutriments: p.nutriments,
-      };
 
-      const calculatedRisk = calculateRisk(productForRules, selectedConditions);
-      const productWarnings = buildWarningStrings(calculatedRisk.findings);
+      const matches = findIngredientMatches(
+        p.ingredients || "",
+        selectedAvoidIds
+      );
+
+      const notices = getNutrientNotices(p.nutriments || {});
 
       setProduct(p);
-      setRisk(calculatedRisk);
-      setWarnings(productWarnings);
+      setIngredientMatches(matches);
+      setNutrientNotices(notices);
       setPhase("results");
 
       try {
@@ -250,15 +468,30 @@ export default function ScannerScreen() {
           productName: p.name || "Unknown product",
           brand: p.brand || "",
           imageUrl: p.image || undefined,
-          riskScore: calculatedRisk.score,
-          riskLevel: calculatedRisk.verdict,
-          warningCount: calculatedRisk.findings.length,
-          warnings: productWarnings,
-          conditions: selectedConditions,
+
+          matchCount: matches.length,
+          ingredientMatches: matches,
+          nutrientNotices: notices,
+          avoidIds: selectedAvoidIds,
+
           ingredients: p.ingredients || "",
           nutriments: p.nutriments || {},
-          riskReasons: calculatedRisk.reasons,
-        });
+
+          // Temporary old fields so history will not break yet.
+          // We will update history.tsx and history-detail.tsx next.
+          riskScore: 0,
+          riskLevel:
+            matches.length > 0
+              ? "Contains selected ingredient"
+              : "No selected ingredients found",
+          warningCount: matches.length,
+          warnings: matches.map(
+            (match) =>
+              `${match.label}: ${match.matchedTerms.slice(0, 6).join(", ")}`
+          ),
+          conditions: selectedAvoidIds,
+          riskReasons: [],
+        } as any);
       } catch (historyError) {
         console.warn("Could not save scan history:", historyError);
       }
@@ -295,7 +528,11 @@ export default function ScannerScreen() {
 
   // ── Camera view ─────────────────────────────────────────────────────────
 
-  if (phase === "camera" || phase === "barcode-detected" || phase === "looking-up") {
+  if (
+    phase === "camera" ||
+    phase === "barcode-detected" ||
+    phase === "looking-up"
+  ) {
     return (
       <View style={styles.cameraContainer}>
         <CameraView
@@ -367,8 +604,11 @@ export default function ScannerScreen() {
         <Text style={styles.centerText}>
           NutriLens checked{" "}
           {attemptedSources.join(" and ") || "the available databases"}, but
-          could not find usable product information. This does not mean the
-          product is safe or unsafe.
+          could not find usable product information.
+        </Text>
+        <Text style={styles.centerText}>
+          This does not mean the product does or does not contain ingredients
+          from your watch list. Always check the package label.
         </Text>
         <TouchableOpacity style={styles.primaryButton} onPress={resetScanner}>
           <Text style={styles.primaryButtonText}>Scan again</Text>
@@ -395,12 +635,9 @@ export default function ScannerScreen() {
     );
   }
 
-  // ── Results ─────────────────────────────────────────────────────────────
+  // ── Results values ──────────────────────────────────────────────────────
 
-  const sodiumMg =
-    product?.nutriments.sodium_100g == null
-      ? null
-      : Math.round(product.nutriments.sodium_100g * 1000);
+  const sodiumMg = getSodiumMg(product?.nutriments || {});
 
   const saltG =
     product?.nutriments.salt_100g == null
@@ -417,18 +654,19 @@ export default function ScannerScreen() {
       ? null
       : Math.round(product.nutriments["saturated-fat_100g"]! * 10) / 10;
 
-  const vColor = verdictColor(risk.verdict);
-  const vBg = verdictBackground(risk.verdict);
+  const matchSummary = getMatchSummary(ingredientMatches.length);
+
+  // ── Results ─────────────────────────────────────────────────────────────
 
   return (
     <ScrollView contentContainerStyle={styles.resultsContainer}>
-      {/* ── Header ──────────────────────────────────────── */}
       <View style={styles.resultsHeader}>
         <Text style={styles.appTitle}>NutriLens</Text>
-        <Text style={styles.resultsSubtitle}>Personalised product analysis</Text>
+        <Text style={styles.resultsSubtitle}>
+          Ingredient flagging and nutrient awareness
+        </Text>
       </View>
 
-      {/* ── Product card ────────────────────────────────── */}
       <View style={styles.productCard}>
         {product?.image ? (
           <Image source={{ uri: product.image }} style={styles.productImage} />
@@ -437,6 +675,7 @@ export default function ScannerScreen() {
             <Text style={styles.placeholderIcon}>🥫</Text>
           </View>
         )}
+
         <View style={styles.productDetails}>
           <Text style={styles.productName}>
             {product?.name || "Unknown product"}
@@ -449,98 +688,127 @@ export default function ScannerScreen() {
         </View>
       </View>
 
-      {/* ── Verdict card ────────────────────────────────── */}
       <View
         style={[
-          styles.verdictCard,
-          { backgroundColor: vBg, borderColor: vColor },
+          styles.summaryCard,
+          ingredientMatches.length > 0
+            ? styles.summaryCardFound
+            : styles.summaryCardClear,
         ]}
       >
-        <Text style={[styles.verdictTitle, { color: vColor }]}>
-          {risk.verdict}
+        <Text
+          style={[
+            styles.summaryTitle,
+            ingredientMatches.length > 0
+              ? styles.summaryTitleFound
+              : styles.summaryTitleClear,
+          ]}
+        >
+          {matchSummary}
         </Text>
-        <Text style={[styles.score, { color: vColor }]}>
-          {risk.score}/100
-        </Text>
-        <Text style={styles.verdictGuidance}>
-          {verdictGuidance(risk.verdict)}
+
+        <Text style={styles.summaryText}>
+          NutriLens checked the available ingredient list against your selected
+          watch profile.
         </Text>
       </View>
 
-      {/* ── Nutrition summary ───────────────────────────── */}
       <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Nutrition summary</Text>
-        <Text style={styles.sectionSubtitle}>Values per 100 g/ml where available</Text>
+        <Text style={styles.sectionTitle}>Your scan profile</Text>
 
-        <NutrientRow label="🧂 Sodium" value={sodiumMg} unit="mg" moderate={120} high={600} />
-        <NutrientRow label="🧂 Salt" value={saltG} unit="g" moderate={0.3} high={1.5} />
-        <NutrientRow label="🍬 Sugar" value={sugarsG} unit="g" moderate={5} high={22.5} />
-        <NutrientRow label="🥓 Saturated fat" value={saturatedFatG} unit="g" moderate={1.5} high={5} />
-      </View>
-
-      {/* ── Health profile ──────────────────────────────── */}
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Your health profile</Text>
-        <View style={styles.conditionWrap}>
-          {selectedConditions.length > 0 ? (
-            selectedConditions.map((condition) => (
-              <View key={condition} style={styles.conditionChip}>
-                <Text style={styles.conditionChipText}>{condition}</Text>
+        <View style={styles.optionWrap}>
+          {selectedAvoidIds.length > 0 ? (
+            selectedAvoidIds.map((id) => (
+              <View key={id} style={styles.optionChip}>
+                <Text style={styles.optionChipText}>{getOptionLabel(id)}</Text>
               </View>
             ))
           ) : (
-            <Text style={styles.emptyText}>No health conditions selected.</Text>
+            <Text style={styles.emptyText}>No watch items selected.</Text>
           )}
         </View>
+
+        {!!profileName && (
+          <Text style={styles.profileText}>Saved profile: {profileName}</Text>
+        )}
       </View>
 
-      {/* ── Personalised findings ───────────────────────── */}
       <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Personalised findings</Text>
+        <Text style={styles.sectionTitle}>Ingredient matches</Text>
 
-        {risk.findings.length === 0 ? (
-          <View style={styles.safeFinding}>
+        {ingredientMatches.length === 0 ? (
+          <View style={styles.noMatchCard}>
             <Text style={styles.findingIcon}>✓</Text>
             <Text style={styles.findingText}>
-              No major concerns were detected using the available product data.
+              No selected avoided ingredients were found in the available
+              ingredient text.
             </Text>
           </View>
         ) : (
-          risk.findings.map((finding) => (
-            <View
-              key={finding.id}
-              style={[
-                styles.findingCard,
-                finding.redFlag && styles.redFlagFinding,
-              ]}
-            >
-              <View style={styles.findingHeading}>
-                <Text style={styles.findingIcon}>
-                  {finding.redFlag ? "🚩" : "⚠️"}
-                </Text>
-                <View style={styles.findingHeadingText}>
-                  <Text style={styles.findingCondition}>{finding.condition}</Text>
-                  <Text style={styles.findingTitle}>{finding.title}</Text>
-                </View>
-              </View>
-
-              {finding.detectedValue && (
-                <Text style={styles.detectedValue}>{finding.detectedValue}</Text>
-              )}
-
-              <Text style={styles.findingExplanation}>{finding.explanation}</Text>
-
-              {finding.matchedIngredients && finding.matchedIngredients.length > 0 && (
-                <Text style={styles.matchedText}>
-                  Detected: {finding.matchedIngredients.slice(0, 6).join(", ")}
-                </Text>
-              )}
+          ingredientMatches.map((match) => (
+            <View key={match.id} style={styles.matchCard}>
+              <Text style={styles.matchTitle}>{match.label}</Text>
+              <Text style={styles.matchedText}>
+                Matched terms: {match.matchedTerms.slice(0, 8).join(", ")}
+              </Text>
             </View>
           ))
         )}
       </View>
 
-      {/* ── Ingredients ─────────────────────────────────── */}
+      <View style={styles.card}>
+        <Text style={styles.sectionTitle}>Nutrient awareness</Text>
+        <Text style={styles.sectionSubtitle}>
+          Values per 100 g/ml where available
+        </Text>
+
+        <NutrientRow
+          label="🧂 Sodium"
+          value={sodiumMg}
+          unit="mg"
+          moderate={120}
+          high={400}
+        />
+        <NutrientRow
+          label="🧂 Salt"
+          value={saltG}
+          unit="g"
+          moderate={0.3}
+          high={1.5}
+        />
+        <NutrientRow
+          label="🍬 Sugar"
+          value={sugarsG}
+          unit="g"
+          moderate={5}
+          high={10}
+        />
+        <NutrientRow
+          label="🥓 Saturated fat"
+          value={saturatedFatG}
+          unit="g"
+          moderate={1.5}
+          high={5}
+        />
+      </View>
+
+      {nutrientNotices.length > 0 && (
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Nutrient notices</Text>
+
+          {nutrientNotices.map((notice) => (
+            <View
+              key={`${notice.nutrient}-${notice.value}`}
+              style={styles.noticeCard}
+            >
+              <Text style={styles.noticeTitle}>{notice.nutrient}</Text>
+              <Text style={styles.noticeValue}>{notice.value}</Text>
+              <Text style={styles.noticeText}>{notice.message}</Text>
+            </View>
+          ))}
+        </View>
+      )}
+
       <View style={styles.card}>
         <Text style={styles.sectionTitle}>Ingredients</Text>
         <Text style={styles.ingredientsText}>
@@ -549,25 +817,19 @@ export default function ScannerScreen() {
         </Text>
       </View>
 
-      {/* ── Warning summary ─────────────────────────────── */}
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Warning summary</Text>
-        {warnings.map((warning, index) => (
-          <View key={`${warning}-${index}`} style={styles.warningRow}>
-            <Text style={styles.warningText}>{warning}</Text>
-          </View>
-        ))}
-      </View>
-
-      {/* ── Disclaimer ──────────────────────────────────── */}
       <View style={styles.disclaimerCard}>
         <Text style={styles.disclaimerText}>
-          NutriLens provides informational guidance based on third-party product
-          data. Product information may be incomplete or inaccurate. Always check
-          the packaging and follow advice from your doctor, renal team, allergist
-          or dietitian.
+          NutriLens helps identify selected ingredients and nutrient information
+          from available third-party product data. It does not provide medical
+          advice, diagnosis, treatment, or personalised dietary recommendations.
+          Product information may be incomplete or inaccurate, so always check
+          the physical product packaging.
         </Text>
       </View>
+
+      <TouchableOpacity style={styles.secondaryButton} onPress={() => router.push("/profile-setup")}>
+        <Text style={styles.secondaryButtonText}>Edit scan profile</Text>
+      </TouchableOpacity>
 
       <TouchableOpacity style={styles.primaryButton} onPress={resetScanner}>
         <Text style={styles.primaryButtonText}>Scan another product</Text>
@@ -579,7 +841,6 @@ export default function ScannerScreen() {
 // ─── Styles ──────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  // ── Generic states ────────────────────────────────────
   center: {
     flexGrow: 1,
     justifyContent: "center",
@@ -611,7 +872,6 @@ const styles = StyleSheet.create({
     fontWeight: "900",
   },
 
-  // ── Primary button ────────────────────────────────────
   primaryButton: {
     width: "100%",
     marginTop: 16,
@@ -626,8 +886,23 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     textAlign: "center",
   },
+  secondaryButton: {
+    width: "100%",
+    marginTop: 8,
+    paddingVertical: 15,
+    paddingHorizontal: 20,
+    borderRadius: RADIUS.lg,
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  secondaryButtonText: {
+    color: COLORS.primary,
+    fontSize: 15,
+    fontWeight: "900",
+    textAlign: "center",
+  },
 
-  // ── Camera ────────────────────────────────────────────
   cameraContainer: {
     flex: 1,
     backgroundColor: "#000",
@@ -672,7 +947,6 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
 
-  // ── Detected / lookup card ────────────────────────────
   detectedCard: {
     width: "100%",
     maxWidth: 440,
@@ -718,7 +992,6 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
 
-  // ── Results ───────────────────────────────────────────
   resultsContainer: {
     flexGrow: 1,
     backgroundColor: COLORS.background,
@@ -740,7 +1013,6 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 
-  // ── Product card ──────────────────────────────────────
   productCard: {
     flexDirection: "row",
     alignItems: "center",
@@ -796,32 +1068,37 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 
-  // ── Verdict ───────────────────────────────────────────
-  verdictCard: {
-    alignItems: "center",
+  summaryCard: {
     borderWidth: 1,
     borderRadius: RADIUS.lg,
-    padding: 22,
+    padding: 18,
     marginBottom: 12,
   },
-  verdictTitle: {
-    fontSize: 24,
-    fontWeight: "900",
+  summaryCardFound: {
+    backgroundColor: COLORS.moderateSubtle,
+    borderColor: COLORS.moderate,
   },
-  score: {
-    fontSize: 42,
-    fontWeight: "900",
-    marginTop: 4,
+  summaryCardClear: {
+    backgroundColor: COLORS.safeSubtle,
+    borderColor: COLORS.safe,
   },
-  verdictGuidance: {
+  summaryTitle: {
+    fontSize: 22,
+    fontWeight: "900",
+    marginBottom: 8,
+  },
+  summaryTitleFound: {
+    color: COLORS.moderate,
+  },
+  summaryTitleClear: {
+    color: COLORS.safe,
+  },
+  summaryText: {
     color: COLORS.text,
     fontSize: 14,
     lineHeight: 21,
-    textAlign: "center",
-    marginTop: 9,
   },
 
-  // ── Generic card ──────────────────────────────────────
   card: {
     backgroundColor: COLORS.card,
     borderWidth: 1,
@@ -842,7 +1119,72 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
 
-  // ── Nutrient row ──────────────────────────────────────
+  optionWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 7,
+    marginTop: 10,
+  },
+  optionChip: {
+    backgroundColor: "#E0F2F1",
+    paddingVertical: 6,
+    paddingHorizontal: 11,
+    borderRadius: RADIUS.full,
+  },
+  optionChipText: {
+    color: COLORS.primary,
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  profileText: {
+    color: COLORS.muted,
+    fontSize: 13,
+    marginTop: 12,
+  },
+  emptyText: {
+    color: COLORS.muted,
+    fontSize: 14,
+    marginTop: 8,
+  },
+
+  noMatchCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: COLORS.safeSubtle,
+    borderRadius: RADIUS.md,
+    padding: 13,
+    marginTop: 10,
+  },
+  findingIcon: {
+    fontSize: 18,
+  },
+  findingText: {
+    flex: 1,
+    color: COLORS.text,
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  matchCard: {
+    backgroundColor: COLORS.moderateSubtle,
+    borderWidth: 1,
+    borderColor: "#FED7AA",
+    borderRadius: RADIUS.md,
+    padding: 14,
+    marginTop: 10,
+  },
+  matchTitle: {
+    color: COLORS.text,
+    fontSize: 15,
+    fontWeight: "900",
+  },
+  matchedText: {
+    color: COLORS.muted,
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 8,
+  },
+
   nutrientRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -877,102 +1219,29 @@ const styles = StyleSheet.create({
     fontWeight: "900",
   },
 
-  // ── Conditions ────────────────────────────────────────
-  conditionWrap: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 7,
-    marginTop: 10,
-  },
-  conditionChip: {
-    backgroundColor: "#E0F2F1",
-    paddingVertical: 6,
-    paddingHorizontal: 11,
-    borderRadius: RADIUS.full,
-  },
-  conditionChipText: {
-    color: COLORS.primary,
-    fontSize: 12,
-    fontWeight: "800",
-  },
-  emptyText: {
-    color: COLORS.muted,
-    fontSize: 14,
-    marginTop: 8,
-  },
-
-  // ── Findings ──────────────────────────────────────────
-  safeFinding: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    backgroundColor: COLORS.safeSubtle,
-    borderRadius: RADIUS.md,
-    padding: 13,
-    marginTop: 10,
-  },
-  findingCard: {
+  noticeCard: {
     backgroundColor: COLORS.moderateSubtle,
-    borderWidth: 1,
-    borderColor: "#FED7AA",
     borderRadius: RADIUS.md,
-    padding: 14,
-    marginTop: 10,
-  },
-  redFlagFinding: {
-    backgroundColor: COLORS.highSubtle,
-    borderColor: "#FCA5A5",
-  },
-  findingHeading: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 9,
-  },
-  findingHeadingText: {
-    flex: 1,
-  },
-  findingIcon: {
-    fontSize: 18,
-  },
-  findingCondition: {
-    color: COLORS.primary,
-    fontSize: 11,
-    fontWeight: "900",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-  findingTitle: {
-    color: COLORS.text,
-    fontSize: 15,
-    fontWeight: "900",
-    marginTop: 2,
-  },
-  detectedValue: {
-    color: COLORS.high,
-    fontSize: 13,
-    fontWeight: "900",
+    padding: 12,
     marginTop: 8,
   },
-  findingExplanation: {
+  noticeTitle: {
     color: COLORS.text,
     fontSize: 14,
-    lineHeight: 21,
-    marginTop: 7,
+    fontWeight: "900",
   },
-  findingText: {
-    flex: 1,
-    color: COLORS.text,
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  matchedText: {
+  noticeValue: {
     color: COLORS.muted,
-    fontSize: 12,
-    lineHeight: 18,
-    marginTop: 8,
+    fontSize: 13,
+    marginTop: 3,
+  },
+  noticeText: {
+    color: COLORS.text,
+    fontSize: 13,
+    lineHeight: 19,
+    marginTop: 5,
   },
 
-  // ── Ingredients ───────────────────────────────────────
   ingredientsText: {
     color: COLORS.text,
     fontSize: 14,
@@ -980,20 +1249,6 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
 
-  // ── Warning summary ───────────────────────────────────
-  warningRow: {
-    backgroundColor: COLORS.moderateSubtle,
-    borderRadius: RADIUS.md,
-    padding: 12,
-    marginTop: 8,
-  },
-  warningText: {
-    color: COLORS.text,
-    fontSize: 13,
-    lineHeight: 20,
-  },
-
-  // ── Disclaimer ────────────────────────────────────────
   disclaimerCard: {
     backgroundColor: "#F1F5F9",
     borderRadius: RADIUS.lg,

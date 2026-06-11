@@ -1,27 +1,79 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 export type UserProfile = {
+  id: string;
   name: string;
-  conditions: string[];
+  avoidIds: string[];
   createdAt: string;
 };
 
-const PROFILE_KEY = "nutrilens_user_profile";
+type NewUserProfile = {
+  name: string;
+  avoidIds: string[];
+  createdAt: string;
+};
 
-export async function saveUserProfile(profile: UserProfile) {
-  await AsyncStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
+const PROFILES_KEY = "nutrilens_user_profiles";
+const ACTIVE_PROFILE_KEY = "nutrilens_active_profile_id";
+
+function createProfileId() {
+  return `profile_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+export async function getUserProfiles(): Promise<UserProfile[]> {
+  const savedProfiles = await AsyncStorage.getItem(PROFILES_KEY);
+
+  if (!savedProfiles) {
+    return [];
+  }
+
+  return JSON.parse(savedProfiles);
+}
+
+export async function saveUserProfile(profile: NewUserProfile) {
+  const profiles = await getUserProfiles();
+
+  const newProfile: UserProfile = {
+    id: createProfileId(),
+    ...profile,
+  };
+
+  const updatedProfiles = [...profiles, newProfile];
+
+  await AsyncStorage.setItem(PROFILES_KEY, JSON.stringify(updatedProfiles));
+  await AsyncStorage.setItem(ACTIVE_PROFILE_KEY, newProfile.id);
+
+  return newProfile;
+}
+
+export async function setActiveProfile(profileId: string) {
+  await AsyncStorage.setItem(ACTIVE_PROFILE_KEY, profileId);
+}
+
+export async function getActiveProfileId(): Promise<string | null> {
+  return AsyncStorage.getItem(ACTIVE_PROFILE_KEY);
 }
 
 export async function getUserProfile(): Promise<UserProfile | null> {
-  const savedProfile = await AsyncStorage.getItem(PROFILE_KEY);
+  const profiles = await getUserProfiles();
+  const activeProfileId = await getActiveProfileId();
 
-  if (!savedProfile) {
+  if (!activeProfileId) {
     return null;
   }
 
-  return JSON.parse(savedProfile);
+  return profiles.find((profile) => profile.id === activeProfileId) || null;
+}
+
+export async function signOutUser() {
+  await AsyncStorage.removeItem(ACTIVE_PROFILE_KEY);
+}
+
+export async function deleteAllProfiles() {
+  await AsyncStorage.removeItem(PROFILES_KEY);
+  await AsyncStorage.removeItem(ACTIVE_PROFILE_KEY);
 }
 
 export async function clearUserProfile() {
-  await AsyncStorage.removeItem(PROFILE_KEY);
+  await signOutUser();
 }
