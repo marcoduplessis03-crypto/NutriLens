@@ -35,12 +35,7 @@ function formatNutritionValue(value: unknown, suffix = "g per 100g"): string {
 }
 
 function getMatchCount(item: ScanHistoryItem): number {
-  return (
-    item.matchCount ??
-    item.ingredientMatches?.length ??
-    item.warningCount ??
-    0
-  );
+  return item.matchCount ?? item.ingredientMatches?.length ?? 0;
 }
 
 function NutritionRow({
@@ -55,6 +50,7 @@ function NutritionRow({
   return (
     <View style={styles.nutritionRow}>
       <Text style={styles.nutritionLabel}>{label}</Text>
+
       <Text style={styles.nutritionValue}>
         {formatNutritionValue(value, suffix)}
       </Text>
@@ -160,7 +156,7 @@ export default function HistoryDetailScreen() {
       <View
         style={[
           styles.summaryCard,
-          hasMatches ? styles.summaryCardWarning : styles.summaryCardOk,
+          hasMatches ? styles.summaryCardFound : styles.summaryCardOk,
         ]}
       >
         <Text style={styles.summaryLabel}>Ingredient check</Text>
@@ -168,7 +164,7 @@ export default function HistoryDetailScreen() {
         <Text
           style={[
             styles.summaryTitle,
-            hasMatches ? styles.summaryTitleWarning : styles.summaryTitleOk,
+            hasMatches ? styles.summaryTitleFound : styles.summaryTitleOk,
           ]}
         >
           {hasMatches
@@ -296,11 +292,10 @@ export default function HistoryDetailScreen() {
       </View>
 
       <Text style={styles.disclaimer}>
-        NutriLens uses available third-party product data to flag selected
-        ingredients and show basic nutrient information. Product data may be
-        incomplete or inaccurate. Always check the physical product packaging.
-        NutriLens does not provide medical advice, diagnosis, treatment, or
-        personalised dietary recommendations.
+        NutriLens is for general ingredient and nutrient awareness only. It does
+        not provide medical advice, diagnosis, treatment, or dietary
+        recommendations. Product data may be incomplete, so always check the
+        product packaging.
       </Text>
     </ScrollView>
   );
@@ -447,7 +442,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.safe,
   },
 
-  summaryCardWarning: {
+  summaryCardFound: {
     borderColor: COLORS.moderate,
   },
 
@@ -468,7 +463,7 @@ const styles = StyleSheet.create({
     color: COLORS.safe,
   },
 
-  summaryTitleWarning: {
+  summaryTitleFound: {
     color: COLORS.moderate,
   },
 

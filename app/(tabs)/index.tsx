@@ -104,11 +104,11 @@ export default function HomeScreen() {
         <Text style={styles.sectionTitle}>How NutriLens works</Text>
 
         <Text style={styles.sectionText}>
-          NutriLens does not diagnose, treat, or rate medical risk. It helps you
-          compare available ingredient text against your own avoid list and shows
-          basic nutrient awareness information.
-        </Text>
-      </View>
+  NutriLens is for general ingredient and nutrient awareness only. It does not
+  provide medical advice, diagnosis, treatment, or dietary recommendations.
+  Product data may be incomplete, so always check the product packaging.
+</Text>
+</View>
 
       <View style={styles.infoCard}>
         <Text style={styles.infoIcon}>🔎</Text>

@@ -125,15 +125,16 @@ type ScannerPhase =
   | "error";
 
 type IngredientMatch = {
-  id: string;
+  avoidId: string;
   label: string;
-  matchedTerms: string[];
+  matchedKeywords: string[];
 };
 
 type NutrientNotice = {
-  nutrient: string;
+  id: string;
+  label: string;
   value: string;
-  message: string;
+  note: string;
 };
 
 type NutrientLevel = "Higher" | "Moderate" | "Lower" | "Unknown";
@@ -150,14 +151,14 @@ function getOptionLabel(id: string) {
 
 function getMatchSummary(matchCount: number): string {
   if (matchCount === 0) {
-    return "No selected avoided ingredients found";
+    return "No flagged items found";
   }
 
   if (matchCount === 1) {
-    return "1 selected avoided ingredient found";
+    return "1 flagged item found";
   }
 
-  return `${matchCount} selected avoided ingredients found`;
+  return `${matchCount} flagged items found`;
 }
 
 function findIngredientMatches(
@@ -168,17 +169,17 @@ function findIngredientMatches(
 
   return AVOID_OPTIONS.filter((item) => selectedAvoidIds.includes(item.id))
     .map((item) => {
-      const matchedTerms = item.keywords.filter((keyword) =>
+      const matchedKeywords = item.keywords.filter((keyword) =>
         text.includes(keyword.toLowerCase())
       );
 
       return {
-        id: item.id,
+        avoidId: item.id,
         label: item.label,
-        matchedTerms,
+        matchedKeywords,
       };
     })
-    .filter((match) => match.matchedTerms.length > 0);
+    .filter((match) => match.matchedKeywords.length > 0);
 }
 
 function getSodiumMg(nutriments: any): number | null {
@@ -200,17 +201,19 @@ function getNutrientNotices(nutriments: any): NutrientNotice[] {
 
   if (sodiumMg != null && sodiumMg > 400) {
     notices.push({
-      nutrient: "Sodium",
+      id: "sodium",
+      label: "Sodium",
       value: `${sodiumMg} mg per 100 g/ml`,
-      message: "Higher sodium level noticed.",
+      note: "Higher sodium level noticed.",
     });
   }
 
   if (nutriments?.sugars_100g != null && nutriments.sugars_100g > 10) {
     notices.push({
-      nutrient: "Sugar",
+      id: "sugar",
+      label: "Sugar",
       value: `${Math.round(nutriments.sugars_100g * 10) / 10} g per 100 g/ml`,
-      message: "Higher sugar level noticed.",
+      note: "Higher sugar level noticed.",
     });
   }
 
@@ -219,11 +222,12 @@ function getNutrientNotices(nutriments: any): NutrientNotice[] {
     nutriments["saturated-fat_100g"] > 5
   ) {
     notices.push({
-      nutrient: "Saturated fat",
+      id: "saturated-fat",
+      label: "Saturated fat",
       value: `${
         Math.round(nutriments["saturated-fat_100g"] * 10) / 10
       } g per 100 g/ml`,
-      message: "Higher saturated fat level noticed.",
+      note: "Higher saturated fat level noticed.",
     });
   }
 
@@ -417,12 +421,12 @@ export default function ScannerScreen() {
   }
 
   function handleLookupStage(stage: LookupStage) {
-  if (stage === "open-food-facts") {
-    setLookupText("Checking Open Food Facts…");
-  } else {
-    setLookupText("Checking product label data…");
+    if (stage === "open-food-facts") {
+      setLookupText("Checking Open Food Facts…");
+    } else {
+      setLookupText("Checking product label data…");
+    }
   }
-}
 
   async function handleBarcodeScanned(result: { data?: string }) {
     if (scanLock.current) return;
@@ -470,29 +474,15 @@ export default function ScannerScreen() {
           brand: p.brand || "",
           imageUrl: p.image || undefined,
 
+          profileName,
+          avoidIds: selectedAvoidIds,
           matchCount: matches.length,
           ingredientMatches: matches,
           nutrientNotices: notices,
-          avoidIds: selectedAvoidIds,
 
           ingredients: p.ingredients || "",
           nutriments: p.nutriments || {},
-
-          // Temporary old fields so history will not break yet.
-          // We will update history.tsx and history-detail.tsx next.
-          riskScore: 0,
-          riskLevel:
-            matches.length > 0
-              ? "Contains selected ingredient"
-              : "No selected ingredients found",
-          warningCount: matches.length,
-          warnings: matches.map(
-            (match) =>
-              `${match.label}: ${match.matchedTerms.slice(0, 6).join(", ")}`
-          ),
-          conditions: selectedAvoidIds,
-          riskReasons: [],
-        } as any);
+        });
       } catch (historyError) {
         console.warn("Could not save scan history:", historyError);
       }
@@ -600,11 +590,12 @@ export default function ScannerScreen() {
     return (
       <ScrollView contentContainerStyle={styles.center}>
         <Pressable
-  style={styles.profileManageButton}
-  onPress={() => router.push("/profile-manage")}
->
-  <Text style={styles.profileManageButtonText}>⚙️</Text>
-</Pressable>
+          style={styles.profileManageButton}
+          onPress={() => router.push("/profile-manage")}
+        >
+          <Text style={styles.profileManageButtonText}>⚙️</Text>
+        </Pressable>
+
         <Text style={styles.stateEmoji}>🔎</Text>
         <Text style={styles.stateTitle}>Product not found</Text>
         <Text style={styles.barcodeDisplay}>Barcode: {barcode}</Text>
@@ -753,10 +744,10 @@ export default function ScannerScreen() {
           </View>
         ) : (
           ingredientMatches.map((match) => (
-            <View key={match.id} style={styles.matchCard}>
+            <View key={match.avoidId} style={styles.matchCard}>
               <Text style={styles.matchTitle}>{match.label}</Text>
               <Text style={styles.matchedText}>
-                Matched terms: {match.matchedTerms.slice(0, 8).join(", ")}
+                Matched terms: {match.matchedKeywords.slice(0, 8).join(", ")}
               </Text>
             </View>
           ))
@@ -804,13 +795,10 @@ export default function ScannerScreen() {
           <Text style={styles.sectionTitle}>Nutrient notices</Text>
 
           {nutrientNotices.map((notice) => (
-            <View
-              key={`${notice.nutrient}-${notice.value}`}
-              style={styles.noticeCard}
-            >
-              <Text style={styles.noticeTitle}>{notice.nutrient}</Text>
+            <View key={notice.id} style={styles.noticeCard}>
+              <Text style={styles.noticeTitle}>{notice.label}</Text>
               <Text style={styles.noticeValue}>{notice.value}</Text>
-              <Text style={styles.noticeText}>{notice.message}</Text>
+              <Text style={styles.noticeText}>{notice.note}</Text>
             </View>
           ))}
         </View>
@@ -834,7 +822,10 @@ export default function ScannerScreen() {
         </Text>
       </View>
 
-      <TouchableOpacity style={styles.secondaryButton} onPress={() => router.push("/profile-setup")}>
+      <TouchableOpacity
+        style={styles.secondaryButton}
+        onPress={() => router.push("/profile-setup")}
+      >
         <Text style={styles.secondaryButtonText}>Edit scan profile</Text>
       </TouchableOpacity>
 
@@ -1269,26 +1260,25 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   profileManageButton: {
-  position: "absolute",
-  top: 56,
-  right: 20,
-  width: 44,
-  height: 44,
-  borderRadius: 22,
-  backgroundColor: COLORS.card,
-  borderWidth: 1,
-  borderColor: COLORS.border,
-  alignItems: "center",
-  justifyContent: "center",
-  zIndex: 50,
-  shadowColor: "#000",
-  shadowOpacity: 0.08,
-  shadowRadius: 10,
-  shadowOffset: { width: 0, height: 5 },
-  elevation: 4,
-},
-
-profileManageButtonText: {
-  fontSize: 20,
-},
+    position: "absolute",
+    top: 56,
+    right: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 50,
+    shadowColor: "#000",
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 4,
+  },
+  profileManageButtonText: {
+    fontSize: 20,
+  },
 });

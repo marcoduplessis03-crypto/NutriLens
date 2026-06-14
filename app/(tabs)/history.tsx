@@ -105,9 +105,12 @@ export default function HistoryScreen() {
     });
   }
 
+  function getMatchCount(item: ScanHistoryItem) {
+    return item.matchCount ?? item.ingredientMatches?.length ?? 0;
+  }
+
   function getMatchSummary(item: ScanHistoryItem) {
-    const matchCount =
-      item.matchCount ?? item.ingredientMatches?.length ?? item.warningCount ?? 0;
+    const matchCount = getMatchCount(item);
 
     if (matchCount === 0) {
       return "No selected ingredients found";
@@ -168,12 +171,7 @@ export default function HistoryScreen() {
         }
         showsVerticalScrollIndicator={false}
         renderItem={({ item }) => {
-          const matchCount =
-            item.matchCount ??
-            item.ingredientMatches?.length ??
-            item.warningCount ??
-            0;
-
+          const matchCount = getMatchCount(item);
           const hasMatches = matchCount > 0;
 
           return (
@@ -234,7 +232,7 @@ export default function HistoryScreen() {
                   <Text
                     style={[
                       styles.summaryValue,
-                      hasMatches ? styles.summaryValueWarning : styles.summaryValueOk,
+                      hasMatches ? styles.summaryValueFound : styles.summaryValueOk,
                     ]}
                   >
                     {getMatchSummary(item)}
@@ -244,14 +242,14 @@ export default function HistoryScreen() {
                 <View
                   style={[
                     styles.statusBadge,
-                    hasMatches ? styles.statusBadgeWarning : styles.statusBadgeOk,
+                    hasMatches ? styles.statusBadgeFound : styles.statusBadgeOk,
                   ]}
                 >
                   <Text
                     style={[
                       styles.statusBadgeText,
                       hasMatches
-                        ? styles.statusBadgeTextWarning
+                        ? styles.statusBadgeTextFound
                         : styles.statusBadgeTextOk,
                     ]}
                   >
@@ -461,7 +459,7 @@ const styles = StyleSheet.create({
     color: COLORS.safe,
   },
 
-  summaryValueWarning: {
+  summaryValueFound: {
     color: COLORS.moderate,
   },
 
@@ -476,7 +474,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.safe,
   },
 
-  statusBadgeWarning: {
+  statusBadgeFound: {
     borderColor: COLORS.moderate,
   },
 
@@ -489,7 +487,7 @@ const styles = StyleSheet.create({
     color: COLORS.safe,
   },
 
-  statusBadgeTextWarning: {
+  statusBadgeTextFound: {
     color: COLORS.moderate,
   },
 

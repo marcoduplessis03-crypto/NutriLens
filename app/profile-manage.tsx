@@ -1,22 +1,22 @@
 import { router, useFocusEffect } from "expo-router";
 import React, { useCallback, useState } from "react";
 import {
-    Alert,
-    FlatList,
-    Image,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    View,
+  Alert,
+  FlatList,
+  Image,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
 } from "react-native";
 
 import {
-    deleteProfile,
-    getUserProfile,
-    updateUserProfile,
-    UserProfile,
+  deleteProfile,
+  getUserProfile,
+  updateUserProfile,
+  UserProfile,
 } from "../src/storage/profileStorage";
 import { getScanHistory, ScanHistoryItem } from "../src/storage/scanHistory";
 import { COLORS, RADIUS, SPACING } from "../src/theme";
@@ -83,12 +83,7 @@ function formatDate(value: string) {
 }
 
 function getMatchCount(item: ScanHistoryItem) {
-  return (
-    item.matchCount ??
-    item.ingredientMatches?.length ??
-    item.warningCount ??
-    0
-  );
+  return item.matchCount ?? item.ingredientMatches?.length ?? 0;
 }
 
 export default function ProfileManageScreen() {

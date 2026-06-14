@@ -32,17 +32,6 @@ export type ScanHistoryItem = {
 
   ingredients?: string;
   nutriments?: Record<string, any>;
-
-  /**
-   * Old fields kept optional so old saved scans do not crash the app.
-   * Do not use these in the new UI.
-   */
-  riskScore?: number;
-  riskLevel?: string;
-  warningCount?: number;
-  warnings?: string[];
-  conditions?: string[];
-  riskReasons?: string[];
 };
 
 export async function getScanHistory(): Promise<ScanHistoryItem[]> {
@@ -55,7 +44,11 @@ export async function getScanHistory(): Promise<ScanHistoryItem[]> {
 
     const parsedHistory = JSON.parse(savedHistory);
 
-    return Array.isArray(parsedHistory) ? parsedHistory : [];
+    if (!Array.isArray(parsedHistory)) {
+      return [];
+    }
+
+    return parsedHistory;
   } catch (error) {
     console.error("Could not load scan history:", error);
     return [];
