@@ -95,9 +95,10 @@ export default function ProfileSelectScreen() {
       {profiles.length === 0 ? (
         <View style={styles.emptyCard}>
           <Text style={styles.emptyTitle}>No profiles yet</Text>
+
           <Text style={styles.emptyText}>
             Create a profile to choose ingredients and nutrients you want
-            NutriLens to watch for.
+            NutriLens to check for.
           </Text>
         </View>
       ) : (
@@ -128,7 +129,7 @@ export default function ProfileSelectScreen() {
                     <Text style={styles.profileName}>{profile.name}</Text>
 
                     <Text style={styles.profileMeta}>
-                      Watching {profile.avoidIds.length} item
+                      {profile.avoidIds.length} selected item
                       {profile.avoidIds.length === 1 ? "" : "s"}
                     </Text>
                   </View>

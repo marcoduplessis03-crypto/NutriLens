@@ -606,7 +606,7 @@ export default function ScannerScreen() {
         </Text>
         <Text style={styles.centerText}>
           This does not mean the product does or does not contain ingredients
-          from your watch list. Always check the package label.
+          from your avoid list. Always check the package label.
         </Text>
         <TouchableOpacity style={styles.primaryButton} onPress={resetScanner}>
           <Text style={styles.primaryButtonText}>Scan again</Text>
@@ -707,7 +707,7 @@ export default function ScannerScreen() {
 
         <Text style={styles.summaryText}>
           NutriLens checked the available ingredient list against your selected
-          watch profile.
+          scan profile.
         </Text>
       </View>
 
@@ -722,7 +722,7 @@ export default function ScannerScreen() {
               </View>
             ))
           ) : (
-            <Text style={styles.emptyText}>No watch items selected.</Text>
+            <Text style={styles.emptyText}>No items selected.</Text>
           )}
         </View>
 

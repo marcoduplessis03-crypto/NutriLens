@@ -14,6 +14,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+
 import { saveUserProfile } from "../src/storage/profileStorage";
 import { COLORS, RADIUS, SPACING } from "../src/theme";
 
@@ -102,18 +103,18 @@ export default function ProfileSetupScreen() {
     if (selectedAvoidIds.length === 0) {
       Alert.alert(
         "Select at least one item",
-        "Please choose at least one ingredient or nutrient to watch."
+        "Please choose at least one ingredient or nutrient to check."
       );
       return;
     }
 
     await saveUserProfile({
-  name: cleanName,
-  avoidIds: selectedAvoidIds,
-  createdAt: new Date().toISOString(),
-});
+      name: cleanName,
+      avoidIds: selectedAvoidIds,
+      createdAt: new Date().toISOString(),
+    });
 
-router.replace("/profile-select");
+    router.replace("/profile-select");
   }
 
   return (
@@ -121,9 +122,9 @@ router.replace("/profile-select");
       <Text style={styles.title}>Create Scan Profile</Text>
 
       <Text style={styles.subtitle}>
-        Choose ingredients and nutrients you want NutriLens to help you watch
-        for when scanning products. This is saved offline on your phone. No
-        email, no account, no sign-in.
+        Choose ingredients and nutrients you want NutriLens to check for when
+        scanning products. This is saved offline on your phone. No email, no
+        account, no sign-in.
       </Text>
 
       <Text style={styles.label}>Name</Text>
@@ -136,7 +137,7 @@ router.replace("/profile-select");
         style={styles.input}
       />
 
-      <Text style={styles.label}>Ingredients and nutrients to watch</Text>
+      <Text style={styles.label}>Ingredients and nutrients to check</Text>
 
       <View style={styles.options}>
         {AVOID_OPTIONS.map((item) => {
@@ -160,9 +161,7 @@ router.replace("/profile-select");
                 {item.label}
               </Text>
 
-              <Text style={styles.optionDescription}>
-                {item.description}
-              </Text>
+              <Text style={styles.optionDescription}>{item.description}</Text>
             </Pressable>
           );
         })}
@@ -224,9 +223,9 @@ const styles = StyleSheet.create({
   },
 
   options: {
-  gap: SPACING.md,
-  marginBottom: SPACING.xl,
-},
+    gap: SPACING.md,
+    marginBottom: SPACING.xl,
+  },
 
   optionCard: {
     backgroundColor: COLORS.card,

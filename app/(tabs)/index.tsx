@@ -75,7 +75,7 @@ export default function HomeScreen() {
           <Text style={styles.savedProfileTitle}>Active scan profile</Text>
           <Text style={styles.savedProfileText}>{activeProfile.name}</Text>
           <Text style={styles.savedProfileSubtext}>
-            Watching {activeProfile.avoidIds.length} item
+            {activeProfile.avoidIds.length} selected item
             {activeProfile.avoidIds.length === 1 ? "" : "s"}
           </Text>
         </View>
@@ -95,7 +95,7 @@ export default function HomeScreen() {
           <Text style={styles.savedProfileTitle}>No profiles yet</Text>
           <Text style={styles.savedProfileText}>
             Create a local scan profile to choose ingredients and nutrients to
-            watch.
+            check.
           </Text>
         </View>
       )}
@@ -125,7 +125,7 @@ export default function HomeScreen() {
         <View style={styles.infoTextWrap}>
           <Text style={styles.infoTitle}>Flag selected ingredients</Text>
           <Text style={styles.infoText}>
-            NutriLens checks for ingredients you added to your personal watch
+            NutriLens checks for ingredients you added to your personal avoid
             list.
           </Text>
         </View>

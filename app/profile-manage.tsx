@@ -151,7 +151,7 @@ export default function ProfileManageScreen() {
     if (selectedAvoidIds.length === 0) {
       Alert.alert(
         "Choose at least one item",
-        "Select at least one ingredient or nutrient to watch."
+        "Select at least one ingredient or nutrient to check."
       );
       return;
     }
@@ -249,8 +249,9 @@ export default function ProfileManageScreen() {
         <View style={styles.profileCardText}>
           <Text style={styles.cardLabel}>Active profile</Text>
           <Text style={styles.cardTitle}>{profile.name}</Text>
+
           <Text style={styles.cardMeta}>
-            Watching {selectedAvoidIds.length} item
+            {selectedAvoidIds.length} selected item
             {selectedAvoidIds.length === 1 ? "" : "s"}
           </Text>
         </View>
@@ -269,7 +270,7 @@ export default function ProfileManageScreen() {
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Ingredient watch list</Text>
+        <Text style={styles.sectionTitle}>Avoid list</Text>
 
         <Text style={styles.sectionDescription}>
           Choose the ingredients and nutrients you want NutriLens to flag when
