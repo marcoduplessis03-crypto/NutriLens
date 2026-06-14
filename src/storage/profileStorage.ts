@@ -26,13 +26,15 @@ function createProfileId() {
 }
 
 export async function getUserProfiles(): Promise<UserProfile[]> {
-  const savedProfiles = await AsyncStorage.getItem(PROFILES_KEY);
+  try {
+    const savedProfiles = await AsyncStorage.getItem(PROFILES_KEY);
+    if (!savedProfiles) return [];
 
-  if (!savedProfiles) {
+    const parsed = JSON.parse(savedProfiles);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
     return [];
   }
-
-  return JSON.parse(savedProfiles);
 }
 
 export async function saveUserProfile(profile: NewUserProfile) {
@@ -43,10 +45,12 @@ export async function saveUserProfile(profile: NewUserProfile) {
     ...profile,
   };
 
-  const updatedProfiles = [...profiles, newProfile];
+  await AsyncStorage.setItem(
+    PROFILES_KEY,
+    JSON.stringify([...profiles, newProfile])
+  );
 
-  await AsyncStorage.setItem(PROFILES_KEY, JSON.stringify(updatedProfiles));
-  await AsyncStorage.setItem(ACTIVE_PROFILE_KEY, newProfile.id);
+  await setActiveProfile(newProfile.id);
 
   return newProfile;
 }
@@ -57,16 +61,9 @@ export async function updateUserProfile(
 ) {
   const profiles = await getUserProfiles();
 
-  const updatedProfiles = profiles.map((profile) => {
-    if (profile.id !== profileId) {
-      return profile;
-    }
-
-    return {
-      ...profile,
-      ...updates,
-    };
-  });
+  const updatedProfiles = profiles.map((profile) =>
+    profile.id === profileId ? { ...profile, ...updates } : profile
+  );
 
   await AsyncStorage.setItem(PROFILES_KEY, JSON.stringify(updatedProfiles));
 
@@ -77,6 +74,10 @@ export async function setActiveProfile(profileId: string) {
   await AsyncStorage.setItem(ACTIVE_PROFILE_KEY, profileId);
 }
 
+export async function clearActiveProfile() {
+  await AsyncStorage.removeItem(ACTIVE_PROFILE_KEY);
+}
+
 export async function getActiveProfileId(): Promise<string | null> {
   return AsyncStorage.getItem(ACTIVE_PROFILE_KEY);
 }
@@ -85,15 +86,13 @@ export async function getUserProfile(): Promise<UserProfile | null> {
   const profiles = await getUserProfiles();
   const activeProfileId = await getActiveProfileId();
 
-  if (!activeProfileId) {
-    return null;
-  }
+  if (!activeProfileId) return null;
 
   return profiles.find((profile) => profile.id === activeProfileId) || null;
 }
 
 export async function signOutUser() {
-  await AsyncStorage.removeItem(ACTIVE_PROFILE_KEY);
+  await clearActiveProfile();
 }
 
 export async function deleteProfile(profileId: string) {
@@ -105,7 +104,7 @@ export async function deleteProfile(profileId: string) {
   await AsyncStorage.setItem(PROFILES_KEY, JSON.stringify(updatedProfiles));
 
   if (activeProfileId === profileId) {
-    await AsyncStorage.removeItem(ACTIVE_PROFILE_KEY);
+    await clearActiveProfile();
   }
 }
 
@@ -115,5 +114,5 @@ export async function deleteAllProfiles() {
 }
 
 export async function clearUserProfile() {
-  await signOutUser();
+  await clearActiveProfile();
 }

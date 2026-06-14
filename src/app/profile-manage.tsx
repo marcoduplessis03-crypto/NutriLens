@@ -17,9 +17,9 @@ import {
   getUserProfile,
   updateUserProfile,
   UserProfile,
-} from "../src/storage/profileStorage";
-import { getScanHistory, ScanHistoryItem } from "../src/storage/scanHistory";
-import { COLORS, RADIUS, SPACING } from "../src/theme";
+} from "../storage/profileStorage";
+import { getScanHistory, ScanHistoryItem } from "../storage/scanHistory";
+import { COLORS, RADIUS, SPACING } from "../theme";
 
 const AVOID_OPTIONS = [
   {

@@ -3,8 +3,8 @@ import {
   Cinzel_700Bold,
   useFonts,
 } from "@expo-google-fonts/cinzel";
-import { router, useFocusEffect } from "expo-router";
-import React, { useEffect, useRef, useState } from "react";
+import { Redirect, router, useFocusEffect } from "expo-router";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Animated,
   Dimensions,
@@ -17,13 +17,13 @@ import {
   View,
 } from "react-native";
 
-import { getUserProfile, UserProfile } from "../src/storage/profileStorage";
-import { COLORS, RADIUS, SPACING } from "../src/theme";
+import { getUserProfile, UserProfile } from "../storage/profileStorage";
+import { COLORS, RADIUS, SPACING } from "../theme";
 
 const { width, height } = Dimensions.get("window");
 
-const eyeLogo = require("../assets/images/nutrilens-eye-logo.png");
-const wordmark = require("../assets/images/nutrilens-wordmark.png");
+const eyeLogo = require("../../assets/images/nutrilens-eye-logo.png");
+const wordmark = require("../../assets/images/nutrilens-wordmark.png");
 
 export default function WelcomeScreen() {
   const [fontsLoaded] = useFonts({
@@ -33,6 +33,7 @@ export default function WelcomeScreen() {
 
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [introFinished, setIntroFinished] = useState(false);
+  const [shouldGoToTerms, setShouldGoToTerms] = useState(false);
 
   const logoY = useRef(new Animated.Value(0)).current;
   const logoScale = useRef(new Animated.Value(1)).current;
@@ -50,39 +51,75 @@ export default function WelcomeScreen() {
 
   const shapePulse = useRef(new Animated.Value(1)).current;
 
+  async function checkProfileAfterIntro() {
+    const activeProfile = await getUserProfile();
+
+    if (!activeProfile) {
+      setProfile(null);
+      setShouldGoToTerms(true);
+      return;
+    }
+
+    setProfile(activeProfile);
+    setShouldGoToTerms(false);
+    setIntroFinished(true);
+
+    Animated.parallel([
+      Animated.timing(welcomeFade, {
+        toValue: 1,
+        duration: 700,
+        useNativeDriver: true,
+      }),
+      Animated.timing(welcomeSlide, {
+        toValue: 0,
+        duration: 700,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }
+
   useFocusEffect(
-    React.useCallback(() => {
-      async function loadProfile() {
-        const savedProfile = await getUserProfile();
-        setProfile(savedProfile);
+    useCallback(() => {
+      async function refreshProfile() {
+        if (!introFinished) return;
+
+        const activeProfile = await getUserProfile();
+
+        if (!activeProfile) {
+          setProfile(null);
+          setShouldGoToTerms(true);
+          return;
+        }
+
+        setProfile(activeProfile);
+        setShouldGoToTerms(false);
       }
 
-      loadProfile();
-    }, [])
+      refreshProfile();
+    }, [introFinished])
   );
 
   useEffect(() => {
     if (!fontsLoaded) return;
 
+    setProfile(null);
     setIntroFinished(false);
+    setShouldGoToTerms(false);
 
     logoY.setValue(0);
     logoScale.setValue(1);
     logoFade.setValue(1);
-
     lettersFade.setValue(0);
     nScale.setValue(1);
     lScale.setValue(1);
-
     middleFade.setValue(0);
     middleSlide.setValue(12);
-
     welcomeFade.setValue(0);
     welcomeSlide.setValue(25);
 
-    Animated.sequence([
+    const introAnimation = Animated.sequence([
       Animated.delay(700),
-
       Animated.parallel([
         Animated.timing(logoY, {
           toValue: -height * 0.22,
@@ -97,9 +134,7 @@ export default function WelcomeScreen() {
           useNativeDriver: true,
         }),
       ]),
-
       Animated.delay(250),
-
       Animated.parallel([
         Animated.timing(lettersFade, {
           toValue: 1,
@@ -131,9 +166,7 @@ export default function WelcomeScreen() {
           useNativeDriver: true,
         }),
       ]),
-
       Animated.delay(900),
-
       Animated.parallel([
         Animated.timing(logoFade, {
           toValue: 0,
@@ -151,25 +184,13 @@ export default function WelcomeScreen() {
           useNativeDriver: true,
         }),
       ]),
-    ]).start(() => {
-      setIntroFinished(true);
+    ]);
 
-      Animated.parallel([
-        Animated.timing(welcomeFade, {
-          toValue: 1,
-          duration: 700,
-          useNativeDriver: true,
-        }),
-        Animated.timing(welcomeSlide, {
-          toValue: 0,
-          duration: 700,
-          easing: Easing.out(Easing.cubic),
-          useNativeDriver: true,
-        }),
-      ]).start();
+    introAnimation.start(() => {
+      checkProfileAfterIntro();
     });
 
-    Animated.loop(
+    const pulseAnimation = Animated.loop(
       Animated.sequence([
         Animated.timing(shapePulse, {
           toValue: 1.06,
@@ -184,37 +205,35 @@ export default function WelcomeScreen() {
           useNativeDriver: true,
         }),
       ])
-    ).start();
+    );
+
+    pulseAnimation.start();
+
+    return () => {
+      introAnimation.stop();
+      pulseAnimation.stop();
+    };
   }, [fontsLoaded]);
 
-  function handleGetStarted() {
-    if (profile) {
-      router.push("/scanner");
-    } else {
-      router.push("/profile-setup");
-    }
-  }
-
-  function handleSelectProfile() {
-    router.push("/profile-select");
+  if (shouldGoToTerms) {
+    return <Redirect href="/terms-disclaimer" />;
   }
 
   if (!fontsLoaded) {
     return <View style={styles.container} />;
   }
 
+  function handleGetStarted() {
+    router.push("/scanner");
+  }
+
+  function handleSelectProfile() {
+    router.push("/profile-select");
+  }
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
-
-      {introFinished && (
-        <Pressable
-          style={styles.profileManageButton}
-          onPress={() => router.push("/profile-manage")}
-        >
-          <Text style={styles.profileManageButtonText}>⚙️</Text>
-        </Pressable>
-      )}
 
       {!introFinished && (
         <View style={styles.introContainer}>
@@ -284,8 +303,15 @@ export default function WelcomeScreen() {
         </View>
       )}
 
-      {introFinished && (
+      {introFinished && profile && (
         <>
+          <Pressable
+            style={styles.profileManageButton}
+            onPress={() => router.push("/profile-manage")}
+          >
+            <Text style={styles.profileManageButtonText}>⚙️</Text>
+          </Pressable>
+
           <Animated.View
             style={[
               styles.shapeOne,
@@ -313,15 +339,9 @@ export default function WelcomeScreen() {
               },
             ]}
           >
-            <Image
-              source={wordmark}
-              resizeMode="contain"
-              style={styles.wordmark}
-            />
+            <Image source={wordmark} resizeMode="contain" style={styles.wordmark} />
 
-            <Text style={styles.title}>
-              {profile ? `Welcome, ${profile.name}` : "Welcome"}
-            </Text>
+            <Text style={styles.title}>Welcome, {profile.name}</Text>
 
             <Text style={styles.subtitle}>Scan smarter. Check labels faster.</Text>
 
@@ -347,25 +367,11 @@ export default function WelcomeScreen() {
               </View>
             </View>
 
-            <Pressable
-              style={({ pressed }) => [
-                styles.primaryButton,
-                pressed && styles.buttonPressed,
-              ]}
-              onPress={handleGetStarted}
-            >
-              <Text style={styles.primaryButtonText}>
-                {profile ? "Continue to Scanner" : "Create Profile"}
-              </Text>
+            <Pressable style={styles.primaryButton} onPress={handleGetStarted}>
+              <Text style={styles.primaryButtonText}>Continue to Scanner</Text>
             </Pressable>
 
-            <Pressable
-              style={({ pressed }) => [
-                styles.secondaryButton,
-                pressed && styles.buttonPressed,
-              ]}
-              onPress={handleSelectProfile}
-            >
+            <Pressable style={styles.secondaryButton} onPress={handleSelectProfile}>
               <Text style={styles.secondaryButtonText}>Select Profile</Text>
             </Pressable>
 
@@ -385,46 +391,38 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     overflow: "hidden",
   },
-
   introContainer: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
   },
-
   introLogo: {
     width: 220,
     height: 220,
     position: "absolute",
   },
-
   lettersContainer: {
     position: "absolute",
     alignItems: "center",
     justifyContent: "center",
     width: "100%",
   },
-
   wordBuildRow: {
     flexDirection: "row",
     alignItems: "baseline",
     justifyContent: "center",
   },
-
   bigLetter: {
     fontFamily: "CinzelBold",
     fontSize: 80,
     color: COLORS.primary,
-    letterSpacing: 0,
   },
-
   wordPart: {
     fontFamily: "CinzelBold",
     fontSize: 42,
     color: COLORS.primary,
     marginHorizontal: -3,
   },
-
   welcomeContent: {
     flex: 1,
     paddingHorizontal: SPACING.xl,
@@ -433,13 +431,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-
   wordmark: {
     width: width * 0.78,
     height: 95,
     marginBottom: SPACING.lg,
   },
-
   title: {
     fontFamily: "CinzelBold",
     fontSize: 30,
@@ -447,14 +443,12 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginBottom: 8,
   },
-
   subtitle: {
     fontSize: 18,
     fontWeight: "800",
     color: COLORS.primary,
     marginBottom: SPACING.md,
   },
-
   description: {
     fontSize: 15,
     lineHeight: 23,
@@ -463,7 +457,6 @@ const styles = StyleSheet.create({
     maxWidth: 340,
     marginBottom: SPACING.xl,
   },
-
   card: {
     width: "100%",
     backgroundColor: COLORS.card,
@@ -472,19 +465,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
     marginBottom: SPACING.xl,
-    shadowColor: "#000",
-    shadowOpacity: 0.06,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 3,
   },
-
   cardRow: {
     flexDirection: "row",
     alignItems: "center",
     marginBottom: SPACING.md,
   },
-
   dot: {
     width: 10,
     height: 10,
@@ -492,13 +478,11 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary,
     marginRight: SPACING.md,
   },
-
   cardText: {
     fontSize: 14,
     fontWeight: "700",
     color: COLORS.text,
   },
-
   primaryButton: {
     width: "100%",
     backgroundColor: COLORS.primary,
@@ -506,19 +490,12 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.lg,
     alignItems: "center",
     marginBottom: SPACING.md,
-    shadowColor: COLORS.primary,
-    shadowOpacity: 0.28,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 5,
   },
-
   primaryButtonText: {
     color: "#FFFFFF",
     fontSize: 16,
     fontWeight: "900",
   },
-
   secondaryButton: {
     width: "100%",
     backgroundColor: "rgba(15, 118, 110, 0.08)",
@@ -528,25 +505,17 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(15, 118, 110, 0.16)",
   },
-
   secondaryButtonText: {
     color: COLORS.primary,
     fontSize: 15,
     fontWeight: "900",
   },
-
-  buttonPressed: {
-    transform: [{ scale: 0.98 }],
-    opacity: 0.9,
-  },
-
   footerText: {
     marginTop: SPACING.lg,
     fontSize: 12,
     color: COLORS.muted,
     textAlign: "center",
   },
-
   profileManageButton: {
     position: "absolute",
     top: 56,
@@ -560,17 +529,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     zIndex: 50,
-    shadowColor: "#000",
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 5 },
-    elevation: 4,
   },
-
   profileManageButtonText: {
     fontSize: 20,
   },
-
   shapeOne: {
     position: "absolute",
     width: 280,
@@ -580,7 +542,6 @@ const styles = StyleSheet.create({
     top: -80,
     right: -90,
   },
-
   shapeTwo: {
     position: "absolute",
     width: 210,
@@ -589,6 +550,5 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(22, 163, 74, 0.07)",
     bottom: 70,
     left: -90,
-    transform: [{ rotate: "24deg" }],
   },
 });

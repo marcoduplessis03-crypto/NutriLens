@@ -15,8 +15,8 @@ import {
   View,
 } from "react-native";
 
-import { saveUserProfile } from "../src/storage/profileStorage";
-import { COLORS, RADIUS, SPACING } from "../src/theme";
+import { saveUserProfile } from "../storage/profileStorage";
+import { COLORS, RADIUS, SPACING } from "../theme";
 
 const AVOID_OPTIONS = [
   {

@@ -12,11 +12,11 @@ import {
   View,
 } from "react-native";
 
-import { lookupProduct, LookupStage } from "../src/api/productLookup";
-import { getUserProfile } from "../src/storage/profileStorage";
-import { saveScanToHistory } from "../src/storage/scanHistory";
-import { COLORS, RADIUS } from "../src/theme";
-import { NormalizedProduct } from "../src/types/product";
+import { lookupProduct, LookupStage } from "../api/productLookup";
+import { getUserProfile } from "../storage/profileStorage";
+import { saveScanToHistory } from "../storage/scanHistory";
+import { COLORS, RADIUS } from "../theme";
+import { NormalizedProduct } from "../types/product";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 

@@ -13,8 +13,8 @@ import {
   getUserProfiles,
   signOutUser,
   UserProfile,
-} from "../../src/storage/profileStorage";
-import { COLORS, RADIUS, SPACING } from "../../src/theme";
+} from "../../storage/profileStorage";
+import { COLORS, RADIUS, SPACING } from "../../theme";
 
 export default function HomeScreen() {
   const [profiles, setProfiles] = useState<UserProfile[]>([]);
@@ -24,22 +24,35 @@ export default function HomeScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      loadProfiles();
+      checkTermsThenLoadProfiles();
     }, [])
   );
 
-  async function loadProfiles() {
-    const savedProfiles = await getUserProfiles();
-    const activeId = await getActiveProfileId();
+  async function checkTermsThenLoadProfiles() {
+    setLoaded(false);
 
-    const active =
-      savedProfiles.find((profile) => profile.id === activeId) || null;
+  
 
-    setProfiles(savedProfiles);
-    setActiveProfileId(activeId);
-    setActiveProfile(active);
-    setLoaded(true);
+    await loadProfiles();
   }
+
+  async function loadProfiles() {
+  const savedProfiles = await getUserProfiles();
+  const activeId = await getActiveProfileId();
+
+  const active =
+    savedProfiles.find((profile) => profile.id === activeId) || null;
+
+  if (!active) {
+   router.replace("/profile-select");
+    return;
+  }
+
+  setProfiles(savedProfiles);
+  setActiveProfileId(activeId);
+  setActiveProfile(active);
+  setLoaded(true);
+}
 
   function continueToProfileSelect() {
     router.push("/profile-select");
@@ -49,10 +62,23 @@ export default function HomeScreen() {
     router.push("/profile-setup");
   }
 
+  function openLegalPages() {
+    router.push("/terms-disclaimer");
+  }
+
   async function handleSignOut() {
     await signOutUser();
     setActiveProfileId(null);
     setActiveProfile(null);
+    await loadProfiles();
+  }
+
+  if (!loaded) {
+    return (
+      <View style={styles.loadingContainer}>
+        <Text style={styles.loadingText}>Loading NutriLens...</Text>
+      </View>
+    );
   }
 
   return (
@@ -70,7 +96,7 @@ export default function HomeScreen() {
         </Text>
       </View>
 
-      {loaded && activeProfile && (
+      {activeProfile && (
         <View style={styles.savedProfileCard}>
           <Text style={styles.savedProfileTitle}>Active scan profile</Text>
           <Text style={styles.savedProfileText}>{activeProfile.name}</Text>
@@ -81,7 +107,7 @@ export default function HomeScreen() {
         </View>
       )}
 
-      {loaded && !activeProfile && profiles.length > 0 && (
+      {!activeProfile && profiles.length > 0 && (
         <View style={styles.savedProfileCard}>
           <Text style={styles.savedProfileTitle}>No profile selected</Text>
           <Text style={styles.savedProfileText}>
@@ -90,7 +116,7 @@ export default function HomeScreen() {
         </View>
       )}
 
-      {loaded && profiles.length === 0 && (
+      {profiles.length === 0 && (
         <View style={styles.savedProfileCard}>
           <Text style={styles.savedProfileTitle}>No profiles yet</Text>
           <Text style={styles.savedProfileText}>
@@ -104,11 +130,12 @@ export default function HomeScreen() {
         <Text style={styles.sectionTitle}>How NutriLens works</Text>
 
         <Text style={styles.sectionText}>
-  NutriLens is for general ingredient and nutrient awareness only. It does not
-  provide medical advice, diagnosis, treatment, or dietary recommendations.
-  Product data may be incomplete, so always check the product packaging.
-</Text>
-</View>
+          NutriLens is for general ingredient and nutrient awareness only. It
+          does not provide medical advice, diagnosis, treatment, or dietary
+          recommendations. Product data may be incomplete, so always check the
+          product packaging.
+        </Text>
+      </View>
 
       <View style={styles.infoCard}>
         <Text style={styles.infoIcon}>🔎</Text>
@@ -157,6 +184,14 @@ export default function HomeScreen() {
         <Text style={styles.secondaryButtonText}>Create New Profile</Text>
       </TouchableOpacity>
 
+      <TouchableOpacity
+        style={styles.legalButton}
+        onPress={openLegalPages}
+        activeOpacity={0.9}
+      >
+        <Text style={styles.legalButtonText}>View Terms & Disclaimer</Text>
+      </TouchableOpacity>
+
       {activeProfileId && (
         <TouchableOpacity
           style={styles.signOutButton}
@@ -178,6 +213,20 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
+  loadingContainer: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: SPACING.lg,
+  },
+
+  loadingText: {
+    color: COLORS.muted,
+    fontSize: 15,
+    fontWeight: "700",
+  },
+
   container: {
     flexGrow: 1,
     padding: SPACING.lg,
@@ -323,6 +372,22 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
     textAlign: "center",
     fontSize: 16,
+    fontWeight: "900",
+  },
+
+  legalButton: {
+    backgroundColor: "#F8FAFC",
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 15,
+    borderRadius: RADIUS.lg,
+    marginTop: SPACING.md,
+  },
+
+  legalButtonText: {
+    color: COLORS.muted,
+    textAlign: "center",
+    fontSize: 14,
     fontWeight: "900",
   },
 

@@ -16,8 +16,9 @@ import {
   deleteHistoryItem,
   getScanHistory,
   ScanHistoryItem,
-} from "../../src/storage/scanHistory";
-import { COLORS, RADIUS } from "../../src/theme";
+} from "../../storage/scanHistory";
+import { COLORS, RADIUS } from "../../theme";
+
 
 export default function HistoryScreen() {
   const [history, setHistory] = useState<ScanHistoryItem[]>([]);

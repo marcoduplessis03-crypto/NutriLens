@@ -16,8 +16,8 @@ import {
   setActiveProfile,
   signOutUser,
   UserProfile,
-} from "../src/storage/profileStorage";
-import { COLORS, RADIUS, SPACING } from "../src/theme";
+} from "../storage/profileStorage";
+import { COLORS, RADIUS, SPACING } from "../theme";
 
 export default function ProfileSelectScreen() {
   const [profiles, setProfiles] = useState<UserProfile[]>([]);

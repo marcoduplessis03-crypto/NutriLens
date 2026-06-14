@@ -11,8 +11,8 @@ import {
   View,
 } from "react-native";
 
-import { getHistoryItemById, ScanHistoryItem } from "../src/storage/scanHistory";
-import { COLORS, RADIUS } from "../src/theme";
+import { getHistoryItemById, ScanHistoryItem } from "../storage/scanHistory";
+import { COLORS, RADIUS } from "../theme";
 
 function formatDate(value: string): string {
   return new Date(value).toLocaleString("en-ZA", {
