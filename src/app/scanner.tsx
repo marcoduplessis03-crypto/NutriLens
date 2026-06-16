@@ -1,1284 +1,333 @@
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { router, useFocusEffect } from "expo-router";
-import { useCallback, useRef, useState } from "react";
-import {
-  ActivityIndicator,
-  Image,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import React, { useState } from "react";
+import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
-import { lookupProduct, LookupStage } from "../api/productLookup";
-import { getUserProfile } from "../storage/profileStorage";
-import { saveScanToHistory } from "../storage/scanHistory";
-import { COLORS, RADIUS } from "../theme";
-import { NormalizedProduct } from "../types/product";
+import { lookupProduct, LookupStage, NormalizedProduct } from "../api/productLookup";
+import { ActionButton, GlassPanel, PageHeader, Pill, V21Screen } from "../components/NutriLensV21";
+import { AVOID_OPTIONS, getActiveProfile, UserProfile } from "../storage/profileStorage";
+import { IngredientMatch, NutrientNotice, saveScanHistoryItem } from "../storage/scanHistory";
+import { isFavoriteProduct, toggleFavoriteProduct } from "../storage/favoritesStorage";
+import { hasAcceptedTerms } from "../storage/termsAcceptance";
+import { COLORS, RADIUS, SPACING } from "../theme";
 
-// ─── Constants ───────────────────────────────────────────────────────────────
+type ScanState = "ready" | "looking-up" | "result" | "not-found" | "error";
 
-const BARCODE_CONFIRMATION_MS = 1200;
-
-const AVOID_OPTIONS = [
-  {
-    id: "phosphates",
-    label: "Phosphates",
-    keywords: [
-      "phosphate",
-      "phosphates",
-      "phosphoric acid",
-      "diphosphate",
-      "triphosphate",
-      "polyphosphate",
-      "e338",
-      "e339",
-      "e340",
-      "e341",
-      "e450",
-      "e451",
-      "e452",
-    ],
-  },
-  {
-    id: "potassiumAdditives",
-    label: "Potassium additives",
-    keywords: [
-      "potassium chloride",
-      "potassium phosphate",
-      "potassium sorbate",
-      "potassium citrate",
-      "potassium bicarbonate",
-      "potassium carbonate",
-    ],
-  },
-  {
-    id: "sodium",
-    label: "Sodium / salt",
-    keywords: ["salt", "sodium chloride", "sea salt", "sodium bicarbonate"],
-  },
-  {
-    id: "addedSugars",
-    label: "Added sugars",
-    keywords: [
-      "sugar",
-      "glucose",
-      "fructose",
-      "sucrose",
-      "syrup",
-      "corn syrup",
-      "maltodextrin",
-      "dextrose",
-      "honey",
-      "molasses",
-    ],
-  },
-  {
-    id: "gluten",
-    label: "Gluten / wheat",
-    keywords: ["wheat", "gluten", "barley", "rye", "malt"],
-  },
-  {
-    id: "dairy",
-    label: "Milk / dairy",
-    keywords: ["milk", "whey", "casein", "lactose", "cream", "butter"],
-  },
-  {
-    id: "nuts",
-    label: "Nuts",
-    keywords: [
-      "peanut",
-      "almond",
-      "cashew",
-      "hazelnut",
-      "walnut",
-      "pecan",
-      "pistachio",
-      "macadamia",
-    ],
-  },
-  {
-    id: "caffeine",
-    label: "Caffeine",
-    keywords: ["caffeine", "guarana", "coffee extract", "tea extract"],
-  },
-  {
-    id: "yeastExtract",
-    label: "Yeast extract",
-    keywords: ["yeast extract", "autolyzed yeast", "hydrolyzed yeast"],
-  },
-  {
-    id: "msg",
-    label: "MSG",
-    keywords: ["msg", "monosodium glutamate", "e621"],
-  },
-];
-
-type ScannerPhase =
-  | "camera"
-  | "barcode-detected"
-  | "looking-up"
-  | "results"
-  | "not-found"
-  | "error";
-
-type IngredientMatch = {
-  avoidId: string;
-  label: string;
-  matchedKeywords: string[];
-};
-
-type NutrientNotice = {
-  id: string;
-  label: string;
-  value: string;
-  note: string;
-};
-
-type NutrientLevel = "Higher" | "Moderate" | "Lower" | "Unknown";
-
-// ─── Utilities ───────────────────────────────────────────────────────────────
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function normalizeText(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, " ");
 }
 
-function getOptionLabel(id: string) {
-  return AVOID_OPTIONS.find((item) => item.id === id)?.label || id;
-}
-
-function getMatchSummary(matchCount: number): string {
-  if (matchCount === 0) {
-    return "No flagged items found";
-  }
-
-  if (matchCount === 1) {
-    return "1 flagged item found";
-  }
-
-  return `${matchCount} flagged items found`;
-}
-
-function findIngredientMatches(
-  ingredientsText: string,
-  selectedAvoidIds: string[]
-): IngredientMatch[] {
-  const text = ingredientsText.toLowerCase();
-
-  return AVOID_OPTIONS.filter((item) => selectedAvoidIds.includes(item.id))
-    .map((item) => {
-      const matchedKeywords = item.keywords.filter((keyword) =>
-        text.includes(keyword.toLowerCase())
-      );
-
-      return {
-        avoidId: item.id,
-        label: item.label,
-        matchedKeywords,
-      };
+function findIngredientMatches(profile: UserProfile | null, product: NormalizedProduct | null): IngredientMatch[] {
+  if (!profile || !product?.ingredients) return [];
+  const ingredientText = normalizeText(product.ingredients);
+  return AVOID_OPTIONS.filter((option) => profile.avoidIds.includes(option.id))
+    .map((option) => {
+      const matchedKeywords = option.keywords.filter((keyword) => ingredientText.includes(normalizeText(keyword))).slice(0, 8);
+      if (matchedKeywords.length === 0) return null;
+      return { avoidId: option.id, label: option.label, matchedKeywords };
     })
-    .filter((match) => match.matchedKeywords.length > 0);
+    .filter(Boolean) as IngredientMatch[];
 }
 
-function getSodiumMg(nutriments: any): number | null {
-  if (nutriments?.sodium_100g != null) {
-    return Math.round(nutriments.sodium_100g * 1000);
-  }
-
-  if (nutriments?.salt_100g != null) {
-    return Math.round(nutriments.salt_100g * 400);
-  }
-
-  return null;
+function formatAmount(value?: number, unit = "g"): string | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  return `${Number(value.toFixed(2))}${unit}/100g`;
 }
 
-function getNutrientNotices(nutriments: any): NutrientNotice[] {
+function buildNutrientNotices(profile: UserProfile | null, product: NormalizedProduct | null): NutrientNotice[] {
+  if (!profile || !product) return [];
   const notices: NutrientNotice[] = [];
+  const n = product.nutriments;
 
-  const sodiumMg = getSodiumMg(nutriments);
-
-  if (sodiumMg != null && sodiumMg > 400) {
-    notices.push({
-      id: "sodium",
-      label: "Sodium",
-      value: `${sodiumMg} mg per 100 g/ml`,
-      note: "Higher sodium level noticed.",
-    });
+  if (profile.avoidIds.includes("sodium_salt")) {
+    const sodium = formatAmount(n.sodium_100g, "g");
+    const salt = formatAmount(n.salt_100g, "g");
+    if (sodium || salt) {
+      notices.push({ id: "sodium_salt", label: "Sodium / salt information", value: salt || sodium || "Available", note: "Review the nutrition label and your own requirements." });
+    }
   }
 
-  if (nutriments?.sugars_100g != null && nutriments.sugars_100g > 10) {
-    notices.push({
-      id: "sugar",
-      label: "Sugar",
-      value: `${Math.round(nutriments.sugars_100g * 10) / 10} g per 100 g/ml`,
-      note: "Higher sugar level noticed.",
-    });
+  if (profile.avoidIds.includes("potassium_additives")) {
+    const potassium = formatAmount(n.potassium_100g, "g");
+    if (potassium) notices.push({ id: "potassium", label: "Potassium information", value: potassium, note: "Database potassium values are not always available for every product." });
   }
 
-  if (
-    nutriments?.["saturated-fat_100g"] != null &&
-    nutriments["saturated-fat_100g"] > 5
-  ) {
-    notices.push({
-      id: "saturated-fat",
-      label: "Saturated fat",
-      value: `${
-        Math.round(nutriments["saturated-fat_100g"] * 10) / 10
-      } g per 100 g/ml`,
-      note: "Higher saturated fat level noticed.",
-    });
+  if (profile.avoidIds.includes("added_sugars")) {
+    const sugars = formatAmount(n.sugars_100g, "g");
+    if (sugars) notices.push({ id: "sugars", label: "Sugars information", value: sugars, note: "Review the ingredient list for added sugar wording." });
   }
+
+  const satFat = formatAmount(n["saturated-fat_100g"], "g");
+  if (satFat) notices.push({ id: "saturated-fat", label: "Saturated fat", value: satFat, note: "Shown for awareness when the database includes it." });
 
   return notices;
 }
 
-function nutrientLevel(
-  value: number | null,
-  moderate: number,
-  high: number
-): NutrientLevel {
-  if (value == null) return "Unknown";
-  if (value >= high) return "Higher";
-  if (value >= moderate) return "Moderate";
-  return "Lower";
-}
-
-function nutrientBadgeColors(level: NutrientLevel): { bg: string; fg: string } {
-  switch (level) {
-    case "Higher":
-      return { bg: COLORS.highSubtle, fg: COLORS.high };
-    case "Moderate":
-      return { bg: COLORS.moderateSubtle, fg: COLORS.moderate };
-    case "Lower":
-      return { bg: COLORS.safeSubtle, fg: COLORS.safe };
-    default:
-      return { bg: "#F1F5F9", fg: COLORS.muted };
-  }
-}
-
-// ─── Sub-components ──────────────────────────────────────────────────────────
-
-function NutrientRow({
-  label,
-  value,
-  unit,
-  moderate,
-  high,
-}: {
-  label: string;
-  value: number | null;
-  unit: string;
-  moderate: number;
-  high: number;
-}) {
-  const level = nutrientLevel(value, moderate, high);
-  const { bg, fg } = nutrientBadgeColors(level);
-
-  return (
-    <View style={styles.nutrientRow}>
-      <View style={styles.nutrientTextWrap}>
-        <Text style={styles.nutrientLabel}>{label}</Text>
-        <Text style={styles.nutrientValue}>
-          {value == null ? "Not available" : `${value} ${unit}`}
-        </Text>
-      </View>
-
-      <View style={[styles.nutrientBadge, { backgroundColor: bg }]}>
-        <Text style={[styles.nutrientBadgeText, { color: fg }]}>{level}</Text>
-      </View>
-    </View>
-  );
-}
-
-function ScanFrame() {
-  const SIZE = 260;
-  const ARM = 36;
-  const THICKNESS = 4;
-  const COLOR = "#FFFFFF";
-
-  const corner = (position: {
-    top?: number;
-    bottom?: number;
-    left?: number;
-    right?: number;
-    borderTopWidth?: number;
-    borderBottomWidth?: number;
-    borderLeftWidth?: number;
-    borderRightWidth?: number;
-    borderTopLeftRadius?: number;
-    borderTopRightRadius?: number;
-    borderBottomLeftRadius?: number;
-    borderBottomRightRadius?: number;
-  }) => ({
-    position: "absolute" as const,
-    width: ARM,
-    height: ARM,
-    borderColor: COLOR,
-    borderWidth: 0,
-    ...position,
-  });
-
-  return (
-    <View style={{ width: SIZE, height: SIZE / 2, position: "relative" }}>
-      <View
-        style={corner({
-          top: 0,
-          left: 0,
-          borderTopWidth: THICKNESS,
-          borderLeftWidth: THICKNESS,
-          borderTopLeftRadius: 8,
-        })}
-      />
-      <View
-        style={corner({
-          top: 0,
-          right: 0,
-          borderTopWidth: THICKNESS,
-          borderRightWidth: THICKNESS,
-          borderTopRightRadius: 8,
-        })}
-      />
-      <View
-        style={corner({
-          bottom: 0,
-          left: 0,
-          borderBottomWidth: THICKNESS,
-          borderLeftWidth: THICKNESS,
-          borderBottomLeftRadius: 8,
-        })}
-      />
-      <View
-        style={corner({
-          bottom: 0,
-          right: 0,
-          borderBottomWidth: THICKNESS,
-          borderRightWidth: THICKNESS,
-          borderBottomRightRadius: 8,
-        })}
-      />
-    </View>
-  );
-}
-
-// ─── Screen ──────────────────────────────────────────────────────────────────
-
 export default function ScannerScreen() {
   const [permission, requestPermission] = useCameraPermissions();
-
-  const scanLock = useRef(false);
-
-  const [phase, setPhase] = useState<ScannerPhase>("camera");
-  const [cameraKey, setCameraKey] = useState(0);
-  const [cameraReady, setCameraReady] = useState(false);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [scanState, setScanState] = useState<ScanState>("ready");
   const [barcode, setBarcode] = useState("");
-  const [lookupText, setLookupText] = useState("");
-  const [attemptedSources, setAttemptedSources] = useState<string[]>([]);
+  const [stage, setStage] = useState<LookupStage | null>(null);
   const [product, setProduct] = useState<NormalizedProduct | null>(null);
-
-  const [profileName, setProfileName] = useState("");
-  const [selectedAvoidIds, setSelectedAvoidIds] = useState<string[]>([]);
-  const [ingredientMatches, setIngredientMatches] = useState<IngredientMatch[]>(
-    []
-  );
+  const [ingredientMatches, setIngredientMatches] = useState<IngredientMatch[]>([]);
   const [nutrientNotices, setNutrientNotices] = useState<NutrientNotice[]>([]);
+  const [favorite, setFavorite] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
 
   useFocusEffect(
-    useCallback(() => {
-      resetScanner();
-      loadProfile();
-
-      return () => {
-        scanLock.current = true;
-      };
+    React.useCallback(() => {
+      async function load() {
+        const accepted = await hasAcceptedTerms();
+        if (!accepted) {
+          router.replace({ pathname: "/terms-disclaimer", params: { next: "/scanner" } } as any);
+          return;
+        }
+        const activeProfile = await getActiveProfile();
+        setProfile(activeProfile);
+      }
+      load();
     }, [])
   );
 
-  async function loadProfile() {
-    const profile = await getUserProfile();
-
-    if (!profile) {
-      router.replace("/profile-setup");
-      return;
-    }
-
-    setProfileName(profile.name);
-    setSelectedAvoidIds(profile.avoidIds || []);
-  }
-
-  function resetScanner() {
-    scanLock.current = false;
-    setPhase("camera");
-    setCameraReady(false);
-    setBarcode("");
-    setLookupText("");
-    setAttemptedSources([]);
-    setProduct(null);
-    setIngredientMatches([]);
-    setNutrientNotices([]);
-    setCameraKey((k) => k + 1);
-  }
-
-  function handleLookupStage(stage: LookupStage) {
-    if (stage === "open-food-facts") {
-      setLookupText("Checking Open Food Facts…");
-    } else {
-      setLookupText("Checking product label data…");
-    }
-  }
-
-  async function handleBarcodeScanned(result: { data?: string }) {
-    if (scanLock.current) return;
-
-    const detectedBarcode = String(result?.data || "").trim();
+  async function handleBarcodeScanned(event: { data?: string }) {
+    if (scanState !== "ready") return;
+    const detectedBarcode = event.data ?? "";
     if (!detectedBarcode) return;
 
-    scanLock.current = true;
     setBarcode(detectedBarcode);
-    setPhase("barcode-detected");
-    setLookupText("Barcode detected");
-
-    await delay(BARCODE_CONFIRMATION_MS);
-
-    setPhase("looking-up");
-    setLookupText("Preparing product lookup…");
+    setScanState("looking-up");
+    setStage(null);
+    setErrorMessage("");
 
     try {
-      const lookup = await lookupProduct(detectedBarcode, handleLookupStage);
-      setAttemptedSources(lookup.attemptedSources);
-
+      const lookup = await lookupProduct(detectedBarcode, setStage);
       if (!lookup.product) {
-        setPhase("not-found");
+        setProduct(null);
+        setIngredientMatches([]);
+        setNutrientNotices([]);
+        setScanState("not-found");
         return;
       }
 
-      const p = lookup.product;
+      const matches = findIngredientMatches(profile, lookup.product);
+      const notices = buildNutrientNotices(profile, lookup.product);
 
-      const matches = findIngredientMatches(
-        p.ingredients || "",
-        selectedAvoidIds
-      );
-
-      const notices = getNutrientNotices(p.nutriments || {});
-
-      setProduct(p);
+      setProduct(lookup.product);
       setIngredientMatches(matches);
       setNutrientNotices(notices);
-      setPhase("results");
+      setFavorite(await isFavoriteProduct(lookup.product.barcode));
+      setScanState("result");
 
-      try {
-        await saveScanToHistory({
-          barcode: p.barcode,
-          productName: p.name || "Unknown product",
-          brand: p.brand || "",
-          imageUrl: p.image || undefined,
-
-          profileName,
-          avoidIds: selectedAvoidIds,
-          matchCount: matches.length,
-          ingredientMatches: matches,
-          nutrientNotices: notices,
-
-          ingredients: p.ingredients || "",
-          nutriments: p.nutriments || {},
-        });
-      } catch (historyError) {
-        console.warn("Could not save scan history:", historyError);
-      }
+      await saveScanHistoryItem({
+        id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        barcode: lookup.product.barcode,
+        productName: lookup.product.name,
+        brand: lookup.product.brand,
+        imageUrl: lookup.product.image,
+        source: lookup.product.source,
+        profileId: profile?.id ?? null,
+        profileName: profile?.name,
+        avoidIds: profile?.avoidIds ?? [],
+        matchCount: matches.length,
+        ingredientMatches: matches,
+        nutrientNotices: notices,
+        scannedAt: new Date().toISOString(),
+        ingredients: lookup.product.ingredients,
+        nutriments: lookup.product.nutriments,
+      });
     } catch (error) {
-      console.error("Product lookup failed:", error);
-      setPhase("error");
+      console.log("Lookup failed:", error);
+      setErrorMessage("Something went wrong while looking up this barcode. Please try again.");
+      setScanState("error");
     }
   }
 
-  // ── Permission gates ────────────────────────────────────────────────────
+  function resetScanner() {
+    setScanState("ready");
+    setBarcode("");
+    setProduct(null);
+    setIngredientMatches([]);
+    setNutrientNotices([]);
+    setStage(null);
+    setErrorMessage("");
+  }
+
+  async function toggleFavorite() {
+    if (!product) return;
+    setFavorite(await toggleFavoriteProduct(product));
+  }
 
   if (!permission) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
-        <Text style={styles.centerText}>Loading camera…</Text>
-      </View>
+      <V21Screen>
+        <PageHeader title="Scanner" subtitle="Preparing camera permissions." />
+        <GlassPanel><ActivityIndicator color={COLORS.primary} /></GlassPanel>
+      </V21Screen>
     );
   }
 
   if (!permission.granted) {
     return (
-      <View style={styles.center}>
-        <Text style={styles.stateTitle}>Camera permission needed</Text>
-        <Text style={styles.centerText}>
-          NutriLens uses your camera to scan food barcodes.
-        </Text>
-        <TouchableOpacity style={styles.primaryButton} onPress={requestPermission}>
-          <Text style={styles.primaryButtonText}>Grant camera permission</Text>
-        </TouchableOpacity>
-      </View>
+      <V21Screen>
+        <PageHeader title="Camera Permission" subtitle="NutriLens needs camera access to scan barcodes." />
+        <GlassPanel strong style={styles.permissionPanel}>
+          <Text style={styles.body}>Camera access is only used for barcode scanning.</Text>
+          <ActionButton title="Allow Camera Access" subtitle="Open camera permission prompt" icon="⌕" onPress={requestPermission} variant="primary" />
+        </GlassPanel>
+      </V21Screen>
     );
   }
-
-  // ── Camera view ─────────────────────────────────────────────────────────
-
-  if (
-    phase === "camera" ||
-    phase === "barcode-detected" ||
-    phase === "looking-up"
-  ) {
-    return (
-      <View style={styles.cameraContainer}>
-        <CameraView
-          key={cameraKey}
-          style={StyleSheet.absoluteFillObject}
-          facing="back"
-          onCameraReady={() => setCameraReady(true)}
-          onMountError={(error) => {
-            console.error("Camera mount error:", error);
-            setPhase("error");
-          }}
-          barcodeScannerSettings={{
-            barcodeTypes: ["ean13", "ean8", "upc_a", "upc_e", "code128"],
-          }}
-          onBarcodeScanned={phase === "camera" ? handleBarcodeScanned : undefined}
-        />
-
-        <View style={styles.cameraShade}>
-          <View style={styles.cameraHeader}>
-            <Text style={styles.cameraTitle}>Scan a food barcode</Text>
-            <Text style={styles.cameraSubtitle}>
-              Align the barcode within the frame
-            </Text>
-          </View>
-
-          <ScanFrame />
-
-          {!cameraReady && (
-            <View style={styles.cameraStatusCard}>
-              <ActivityIndicator color="#FFFFFF" />
-              <Text style={styles.cameraStatusText}>Starting camera…</Text>
-            </View>
-          )}
-
-          {phase === "barcode-detected" && (
-            <View style={styles.detectedCard}>
-              <View style={styles.detectedIconWrap}>
-                <Text style={styles.detectedIconText}>✓</Text>
-              </View>
-              <View style={styles.detectedTextWrap}>
-                <Text style={styles.detectedTitle}>Barcode detected</Text>
-                <Text style={styles.detectedBarcode}>{barcode}</Text>
-              </View>
-            </View>
-          )}
-
-          {phase === "looking-up" && (
-            <View style={styles.detectedCard}>
-              <ActivityIndicator size="small" color={COLORS.primary} />
-              <View style={styles.detectedTextWrap}>
-                <Text style={styles.detectedTitle}>{barcode}</Text>
-                <Text style={styles.lookupText}>{lookupText}</Text>
-              </View>
-            </View>
-          )}
-        </View>
-      </View>
-    );
-  }
-
-  // ── Not found ───────────────────────────────────────────────────────────
-
-  if (phase === "not-found") {
-    return (
-      <ScrollView contentContainerStyle={styles.center}>
-        <Pressable
-          style={styles.profileManageButton}
-          onPress={() => router.push("/profile-manage")}
-        >
-          <Text style={styles.profileManageButtonText}>⚙️</Text>
-        </Pressable>
-
-        <Text style={styles.stateEmoji}>🔎</Text>
-        <Text style={styles.stateTitle}>Product not found</Text>
-        <Text style={styles.barcodeDisplay}>Barcode: {barcode}</Text>
-        <Text style={styles.centerText}>
-          NutriLens checked{" "}
-          {attemptedSources.join(" and ") || "the available databases"}, but
-          could not find usable product information.
-        </Text>
-        <Text style={styles.centerText}>
-          This does not mean the product does or does not contain ingredients
-          from your avoid list. Always check the package label.
-        </Text>
-        <TouchableOpacity style={styles.primaryButton} onPress={resetScanner}>
-          <Text style={styles.primaryButtonText}>Scan again</Text>
-        </TouchableOpacity>
-      </ScrollView>
-    );
-  }
-
-  // ── Error ───────────────────────────────────────────────────────────────
-
-  if (phase === "error") {
-    return (
-      <View style={styles.center}>
-        <Text style={styles.stateEmoji}>⚠️</Text>
-        <Text style={styles.stateTitle}>Something went wrong</Text>
-        <Text style={styles.centerText}>
-          NutriLens could not complete the lookup. Check your internet
-          connection and try again.
-        </Text>
-        <TouchableOpacity style={styles.primaryButton} onPress={resetScanner}>
-          <Text style={styles.primaryButtonText}>Try again</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
-
-  // ── Results values ──────────────────────────────────────────────────────
-
-  const sodiumMg = getSodiumMg(product?.nutriments || {});
-
-  const saltG =
-    product?.nutriments.salt_100g == null
-      ? null
-      : Math.round(product.nutriments.salt_100g * 100) / 100;
-
-  const sugarsG =
-    product?.nutriments.sugars_100g == null
-      ? null
-      : Math.round(product.nutriments.sugars_100g * 10) / 10;
-
-  const saturatedFatG =
-    product?.nutriments["saturated-fat_100g"] == null
-      ? null
-      : Math.round(product.nutriments["saturated-fat_100g"]! * 10) / 10;
-
-  const matchSummary = getMatchSummary(ingredientMatches.length);
-
-  // ── Results ─────────────────────────────────────────────────────────────
 
   return (
-    <ScrollView contentContainerStyle={styles.resultsContainer}>
-      <View style={styles.resultsHeader}>
-        <Text style={styles.appTitle}>NutriLens</Text>
-        <Text style={styles.resultsSubtitle}>
-          Ingredient flagging and nutrient awareness
-        </Text>
-      </View>
+    <View style={styles.screen}>
+      {scanState === "ready" || scanState === "looking-up" ? (
+        <>
+          <CameraView style={styles.camera} facing="back" barcodeScannerSettings={{ barcodeTypes: ["ean13", "ean8", "upc_a", "upc_e", "code128", "qr"] as any }} onBarcodeScanned={scanState === "ready" ? handleBarcodeScanned : undefined} />
+          <View style={styles.cameraOverlay}>
+            <View style={styles.topBar}>
+              <Pressable style={styles.roundButton} onPress={() => router.back()}><Text style={styles.roundButtonText}>‹</Text></Pressable>
+              <View style={styles.statusPill}><Text style={styles.statusPillText}>{profile ? profile.name : "No profile"}</Text></View>
+              <Pressable style={styles.roundButton} onPress={() => router.push("/profile-select")}><Text style={styles.roundButtonText}>👥</Text></Pressable>
+            </View>
 
-      <View style={styles.productCard}>
-        {product?.image ? (
-          <Image source={{ uri: product.image }} style={styles.productImage} />
-        ) : (
-          <View style={styles.productImagePlaceholder}>
-            <Text style={styles.placeholderIcon}>🥫</Text>
+            <View style={styles.scanFrame}>
+              <View style={styles.cornerTL} /><View style={styles.cornerTR} /><View style={styles.cornerBL} /><View style={styles.cornerBR} />
+            </View>
+
+            <GlassPanel style={styles.scanDock}>
+              <Text style={styles.scanTitle}>{scanState === "looking-up" ? "Checking product data" : "Scan a barcode"}</Text>
+              <Text style={styles.scanSubtitle}>{scanState === "looking-up" ? `Source: ${stage === "open-food-facts" ? "Open Food Facts" : "Starting lookup"}` : "Hold the barcode inside the frame."}</Text>
+              {scanState === "looking-up" ? <ActivityIndicator color={COLORS.primary} style={styles.spinner} /> : null}
+            </GlassPanel>
           </View>
-        )}
+        </>
+      ) : (
+        <V21Screen>
+          <PageHeader title={scanState === "result" ? "Scan Result" : scanState === "not-found" ? "Product Not Found" : "Scan Error"} subtitle={`Barcode: ${barcode || "Unavailable"}`} />
 
-        <View style={styles.productDetails}>
-          <Text style={styles.productName}>
-            {product?.name || "Unknown product"}
-          </Text>
-          <Text style={styles.productBrand}>
-            {product?.brand || "Brand not listed"}
-          </Text>
-          <Text style={styles.productMeta}>Barcode: {barcode}</Text>
-          <Text style={styles.productSource}>Source: {product?.source}</Text>
-        </View>
-      </View>
+          {scanState === "result" && product ? (
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <GlassPanel strong style={styles.resultPanel}>
+                <View style={styles.productHeader}>
+                  {product.image ? <Image source={{ uri: product.image }} style={styles.productImage} resizeMode="contain" /> : <View style={styles.productImagePlaceholder}><Text style={styles.productImageText}>NL</Text></View>}
+                  <View style={styles.productCopy}>
+                    <Text style={styles.productName}>{product.name}</Text>
+                    {product.brand ? <Text style={styles.brand}>{product.brand}</Text> : null}
+                    <Pill>{product.source}</Pill>
+                  </View>
+                </View>
 
-      <View
-        style={[
-          styles.summaryCard,
-          ingredientMatches.length > 0
-            ? styles.summaryCardFound
-            : styles.summaryCardClear,
-        ]}
-      >
-        <Text
-          style={[
-            styles.summaryTitle,
-            ingredientMatches.length > 0
-              ? styles.summaryTitleFound
-              : styles.summaryTitleClear,
-          ]}
-        >
-          {matchSummary}
-        </Text>
+                <View style={styles.resultSummary}>
+                  <View style={[styles.summaryBox, ingredientMatches.length > 0 ? styles.summaryBoxWarn : styles.summaryBoxSafe]}>
+                    <Text style={styles.summaryNumber}>{ingredientMatches.length}</Text>
+                    <Text style={styles.summaryText}>{ingredientMatches.length === 1 ? "selected item found" : "selected items found"}</Text>
+                  </View>
+                  <View style={styles.summaryBox}>
+                    <Text style={styles.summaryNumber}>{nutrientNotices.length}</Text>
+                    <Text style={styles.summaryText}>nutrient notices</Text>
+                  </View>
+                </View>
 
-        <Text style={styles.summaryText}>
-          NutriLens checked the available ingredient list against your selected
-          scan profile.
-        </Text>
-      </View>
+                <ActionButton title={favorite ? "Remove from Favorites" : "Add to Favorites"} subtitle="Save this product locally" icon="★" onPress={toggleFavorite} />
+              </GlassPanel>
 
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Your scan profile</Text>
+              <GlassPanel style={styles.sectionPanel}>
+                <Text style={styles.sectionTitle}>Ingredient flagging</Text>
+                {product.ingredients ? <Text style={styles.ingredients}>{product.ingredients}</Text> : <Text style={styles.body}>No ingredient list was available from the product database.</Text>}
+                <View style={styles.matchList}>
+                  {ingredientMatches.length > 0 ? ingredientMatches.map((match) => (
+                    <View key={match.avoidId} style={styles.matchCard}>
+                      <Text style={styles.matchTitle}>{match.label}</Text>
+                      <Text style={styles.matchKeywords}>Matched: {match.matchedKeywords.join(", ")}</Text>
+                    </View>
+                  )) : <Text style={styles.noMatchText}>No selected avoided ingredients were found in the available ingredient text.</Text>}
+                </View>
+              </GlassPanel>
 
-        <View style={styles.optionWrap}>
-          {selectedAvoidIds.length > 0 ? (
-            selectedAvoidIds.map((id) => (
-              <View key={id} style={styles.optionChip}>
-                <Text style={styles.optionChipText}>{getOptionLabel(id)}</Text>
+              <GlassPanel style={styles.sectionPanel}>
+                <Text style={styles.sectionTitle}>Nutrient awareness</Text>
+                {nutrientNotices.length > 0 ? nutrientNotices.map((notice) => (
+                  <View key={notice.id} style={styles.noticeCard}>
+                    <View style={styles.noticeTop}><Text style={styles.noticeTitle}>{notice.label}</Text><Pill tone="warn">{notice.value}</Pill></View>
+                    <Text style={styles.noticeNote}>{notice.note}</Text>
+                  </View>
+                )) : <Text style={styles.body}>No nutrient notices were available for your selected avoid list.</Text>}
+              </GlassPanel>
+
+              <GlassPanel style={styles.disclaimerPanel}>
+                <Text style={styles.disclaimerTitle}>Important</Text>
+                <Text style={styles.disclaimerText}>NutriLens uses third-party product data and may be incomplete. Always verify the physical product label before making decisions.</Text>
+              </GlassPanel>
+
+              <View style={styles.bottomActions}>
+                <ActionButton title="Scan Another" subtitle="Return to camera" icon="⌕" onPress={resetScanner} variant="primary" />
+                <ActionButton title="Back Home" subtitle="Return to dashboard" icon="⌂" onPress={() => router.replace("/home")} />
               </View>
-            ))
+            </ScrollView>
           ) : (
-            <Text style={styles.emptyText}>No items selected.</Text>
+            <GlassPanel strong style={styles.resultPanel}>
+              <Text style={styles.productName}>{scanState === "not-found" ? "We could not find this product." : errorMessage}</Text>
+              <Text style={styles.body}>Try scanning again, or check whether the barcode is clear and visible.</Text>
+              <View style={styles.bottomActions}><ActionButton title="Scan Again" subtitle="Return to camera" icon="⌕" onPress={resetScanner} variant="primary" /><ActionButton title="Back Home" subtitle="Return to dashboard" icon="⌂" onPress={() => router.replace("/home")} /></View>
+            </GlassPanel>
           )}
-        </View>
-
-        {!!profileName && (
-          <Text style={styles.profileText}>Saved profile: {profileName}</Text>
-        )}
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Ingredient matches</Text>
-
-        {ingredientMatches.length === 0 ? (
-          <View style={styles.noMatchCard}>
-            <Text style={styles.findingIcon}>✓</Text>
-            <Text style={styles.findingText}>
-              No selected avoided ingredients were found in the available
-              ingredient text.
-            </Text>
-          </View>
-        ) : (
-          ingredientMatches.map((match) => (
-            <View key={match.avoidId} style={styles.matchCard}>
-              <Text style={styles.matchTitle}>{match.label}</Text>
-              <Text style={styles.matchedText}>
-                Matched terms: {match.matchedKeywords.slice(0, 8).join(", ")}
-              </Text>
-            </View>
-          ))
-        )}
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Nutrient awareness</Text>
-        <Text style={styles.sectionSubtitle}>
-          Values per 100 g/ml where available
-        </Text>
-
-        <NutrientRow
-          label="🧂 Sodium"
-          value={sodiumMg}
-          unit="mg"
-          moderate={120}
-          high={400}
-        />
-        <NutrientRow
-          label="🧂 Salt"
-          value={saltG}
-          unit="g"
-          moderate={0.3}
-          high={1.5}
-        />
-        <NutrientRow
-          label="🍬 Sugar"
-          value={sugarsG}
-          unit="g"
-          moderate={5}
-          high={10}
-        />
-        <NutrientRow
-          label="🥓 Saturated fat"
-          value={saturatedFatG}
-          unit="g"
-          moderate={1.5}
-          high={5}
-        />
-      </View>
-
-      {nutrientNotices.length > 0 && (
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Nutrient notices</Text>
-
-          {nutrientNotices.map((notice) => (
-            <View key={notice.id} style={styles.noticeCard}>
-              <Text style={styles.noticeTitle}>{notice.label}</Text>
-              <Text style={styles.noticeValue}>{notice.value}</Text>
-              <Text style={styles.noticeText}>{notice.note}</Text>
-            </View>
-          ))}
-        </View>
+        </V21Screen>
       )}
-
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Ingredients</Text>
-        <Text style={styles.ingredientsText}>
-          {product?.ingredients ||
-            "No ingredient information was supplied by the database."}
-        </Text>
-      </View>
-
-      <View style={styles.disclaimerCard}>
-        <Text style={styles.disclaimerText}>
-          NutriLens helps identify selected ingredients and nutrient information
-          from available third-party product data. It does not provide medical
-          advice, diagnosis, treatment, or personalised dietary recommendations.
-          Product information may be incomplete or inaccurate, so always check
-          the physical product packaging.
-        </Text>
-      </View>
-
-      <TouchableOpacity
-        style={styles.secondaryButton}
-        onPress={() => router.push("/profile-setup")}
-      >
-        <Text style={styles.secondaryButtonText}>Edit scan profile</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity style={styles.primaryButton} onPress={resetScanner}>
-        <Text style={styles.primaryButtonText}>Scan another product</Text>
-      </TouchableOpacity>
-    </ScrollView>
+    </View>
   );
 }
 
-// ─── Styles ──────────────────────────────────────────────────────────────────
+const cornerBase = { position: "absolute" as const, width: 36, height: 36, borderColor: COLORS.aqua };
 
 const styles = StyleSheet.create({
-  center: {
-    flexGrow: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: COLORS.background,
-    padding: 24,
-    gap: 8,
-  },
-  centerText: {
-    color: COLORS.muted,
-    fontSize: 15,
-    lineHeight: 23,
-    textAlign: "center",
-    maxWidth: 420,
-  },
-  stateTitle: {
-    color: COLORS.text,
-    fontSize: 24,
-    fontWeight: "900",
-    textAlign: "center",
-  },
-  stateEmoji: {
-    fontSize: 46,
-    marginBottom: 4,
-  },
-  barcodeDisplay: {
-    color: COLORS.primary,
-    fontSize: 15,
-    fontWeight: "900",
-  },
-
-  primaryButton: {
-    width: "100%",
-    marginTop: 16,
-    paddingVertical: 17,
-    paddingHorizontal: 20,
-    borderRadius: RADIUS.lg,
-    backgroundColor: COLORS.primary,
-  },
-  primaryButtonText: {
-    color: "#FFFFFF",
-    fontSize: 16,
-    fontWeight: "900",
-    textAlign: "center",
-  },
-  secondaryButton: {
-    width: "100%",
-    marginTop: 8,
-    paddingVertical: 15,
-    paddingHorizontal: 20,
-    borderRadius: RADIUS.lg,
-    backgroundColor: COLORS.card,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  secondaryButtonText: {
-    color: COLORS.primary,
-    fontSize: 15,
-    fontWeight: "900",
-    textAlign: "center",
-  },
-
-  cameraContainer: {
-    flex: 1,
-    backgroundColor: "#000",
-  },
-  cameraShade: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingTop: 70,
-    paddingBottom: 45,
-    paddingHorizontal: 24,
-    backgroundColor: "rgba(0,0,0,0.2)",
-  },
-  cameraHeader: {
-    backgroundColor: COLORS.overlayDark,
-    paddingVertical: 14,
-    paddingHorizontal: 22,
-    borderRadius: 22,
-    alignItems: "center",
-  },
-  cameraTitle: {
-    color: "#FFFFFF",
-    fontSize: 22,
-    fontWeight: "900",
-  },
-  cameraSubtitle: {
-    color: "#E2E8F0",
-    fontSize: 13,
-    marginTop: 5,
-  },
-  cameraStatusCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    backgroundColor: "rgba(0,0,0,0.68)",
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    borderRadius: 18,
-  },
-  cameraStatusText: {
-    color: "#FFFFFF",
-    fontWeight: "700",
-  },
-
-  detectedCard: {
-    width: "100%",
-    maxWidth: 440,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 14,
-    backgroundColor: COLORS.overlayLight,
-    padding: 16,
-    borderRadius: 22,
-    minHeight: 80,
-  },
-  detectedIconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: COLORS.safeSubtle,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  detectedIconText: {
-    color: COLORS.safe,
-    fontSize: 22,
-    fontWeight: "900",
-  },
-  detectedTextWrap: {
-    flex: 1,
-  },
-  detectedTitle: {
-    color: COLORS.text,
-    fontSize: 15,
-    fontWeight: "900",
-  },
-  detectedBarcode: {
-    color: COLORS.primary,
-    fontSize: 18,
-    fontWeight: "900",
-    marginTop: 3,
-    letterSpacing: 1,
-  },
-  lookupText: {
-    color: COLORS.muted,
-    fontSize: 13,
-    marginTop: 4,
-  },
-
-  resultsContainer: {
-    flexGrow: 1,
-    backgroundColor: COLORS.background,
-    padding: 20,
-    paddingTop: 55,
-    paddingBottom: 55,
-  },
-  resultsHeader: {
-    marginBottom: 16,
-  },
-  appTitle: {
-    color: COLORS.text,
-    fontSize: 34,
-    fontWeight: "900",
-  },
-  resultsSubtitle: {
-    color: COLORS.muted,
-    fontSize: 14,
-    marginTop: 2,
-  },
-
-  productCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: COLORS.card,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: RADIUS.lg,
-    padding: 14,
-    marginBottom: 12,
-    gap: 14,
-  },
-  productImage: {
-    width: 88,
-    height: 88,
-    resizeMode: "contain",
-    borderRadius: 16,
-    backgroundColor: COLORS.background,
-  },
-  productImagePlaceholder: {
-    width: 88,
-    height: 88,
-    borderRadius: 16,
-    backgroundColor: COLORS.background,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  placeholderIcon: {
-    fontSize: 36,
-  },
-  productDetails: {
-    flex: 1,
-  },
-  productName: {
-    color: COLORS.text,
-    fontSize: 18,
-    fontWeight: "900",
-    lineHeight: 24,
-  },
-  productBrand: {
-    color: COLORS.muted,
-    fontSize: 14,
-    marginTop: 4,
-  },
-  productMeta: {
-    color: COLORS.muted,
-    fontSize: 12,
-    marginTop: 6,
-  },
-  productSource: {
-    color: COLORS.primary,
-    fontSize: 12,
-    fontWeight: "800",
-    marginTop: 2,
-  },
-
-  summaryCard: {
-    borderWidth: 1,
-    borderRadius: RADIUS.lg,
-    padding: 18,
-    marginBottom: 12,
-  },
-  summaryCardFound: {
-    backgroundColor: COLORS.moderateSubtle,
-    borderColor: COLORS.moderate,
-  },
-  summaryCardClear: {
-    backgroundColor: COLORS.safeSubtle,
-    borderColor: COLORS.safe,
-  },
-  summaryTitle: {
-    fontSize: 22,
-    fontWeight: "900",
-    marginBottom: 8,
-  },
-  summaryTitleFound: {
-    color: COLORS.moderate,
-  },
-  summaryTitleClear: {
-    color: COLORS.safe,
-  },
-  summaryText: {
-    color: COLORS.text,
-    fontSize: 14,
-    lineHeight: 21,
-  },
-
-  card: {
-    backgroundColor: COLORS.card,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: RADIUS.lg,
-    padding: 16,
-    marginBottom: 12,
-  },
-  sectionTitle: {
-    color: COLORS.text,
-    fontSize: 17,
-    fontWeight: "900",
-  },
-  sectionSubtitle: {
-    color: COLORS.muted,
-    fontSize: 12,
-    marginTop: 2,
-    marginBottom: 10,
-  },
-
-  optionWrap: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 7,
-    marginTop: 10,
-  },
-  optionChip: {
-    backgroundColor: "#E0F2F1",
-    paddingVertical: 6,
-    paddingHorizontal: 11,
-    borderRadius: RADIUS.full,
-  },
-  optionChipText: {
-    color: COLORS.primary,
-    fontSize: 12,
-    fontWeight: "800",
-  },
-  profileText: {
-    color: COLORS.muted,
-    fontSize: 13,
-    marginTop: 12,
-  },
-  emptyText: {
-    color: COLORS.muted,
-    fontSize: 14,
-    marginTop: 8,
-  },
-
-  noMatchCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    backgroundColor: COLORS.safeSubtle,
-    borderRadius: RADIUS.md,
-    padding: 13,
-    marginTop: 10,
-  },
-  findingIcon: {
-    fontSize: 18,
-  },
-  findingText: {
-    flex: 1,
-    color: COLORS.text,
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  matchCard: {
-    backgroundColor: COLORS.moderateSubtle,
-    borderWidth: 1,
-    borderColor: "#FED7AA",
-    borderRadius: RADIUS.md,
-    padding: 14,
-    marginTop: 10,
-  },
-  matchTitle: {
-    color: COLORS.text,
-    fontSize: 15,
-    fontWeight: "900",
-  },
-  matchedText: {
-    color: COLORS.muted,
-    fontSize: 12,
-    lineHeight: 18,
-    marginTop: 8,
-  },
-
-  nutrientRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: COLORS.background,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: RADIUS.md,
-    padding: 12,
-    marginTop: 8,
-  },
-  nutrientTextWrap: {
-    flex: 1,
-  },
-  nutrientLabel: {
-    color: COLORS.text,
-    fontSize: 14,
-    fontWeight: "900",
-  },
-  nutrientValue: {
-    color: COLORS.muted,
-    fontSize: 13,
-    marginTop: 2,
-  },
-  nutrientBadge: {
-    paddingHorizontal: 11,
-    paddingVertical: 6,
-    borderRadius: RADIUS.full,
-  },
-  nutrientBadgeText: {
-    fontSize: 12,
-    fontWeight: "900",
-  },
-
-  noticeCard: {
-    backgroundColor: COLORS.moderateSubtle,
-    borderRadius: RADIUS.md,
-    padding: 12,
-    marginTop: 8,
-  },
-  noticeTitle: {
-    color: COLORS.text,
-    fontSize: 14,
-    fontWeight: "900",
-  },
-  noticeValue: {
-    color: COLORS.muted,
-    fontSize: 13,
-    marginTop: 3,
-  },
-  noticeText: {
-    color: COLORS.text,
-    fontSize: 13,
-    lineHeight: 19,
-    marginTop: 5,
-  },
-
-  ingredientsText: {
-    color: COLORS.text,
-    fontSize: 14,
-    lineHeight: 22,
-    marginTop: 10,
-  },
-
-  disclaimerCard: {
-    backgroundColor: "#F1F5F9",
-    borderRadius: RADIUS.lg,
-    padding: 15,
-    marginBottom: 4,
-  },
-  disclaimerText: {
-    color: COLORS.muted,
-    fontSize: 12,
-    lineHeight: 18,
-    textAlign: "center",
-  },
-  profileManageButton: {
-    position: "absolute",
-    top: 56,
-    right: 20,
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: COLORS.card,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 50,
-    shadowColor: "#000",
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 5 },
-    elevation: 4,
-  },
-  profileManageButtonText: {
-    fontSize: 20,
-  },
+  screen: { flex: 1, backgroundColor: COLORS.ink },
+  camera: { ...StyleSheet.absoluteFillObject },
+  cameraOverlay: { flex: 1, paddingTop: 54, paddingHorizontal: SPACING.lg, paddingBottom: SPACING.xl, justifyContent: "space-between" },
+  topBar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  roundButton: { width: 46, height: 46, borderRadius: 23, backgroundColor: "rgba(255,255,255,0.92)", alignItems: "center", justifyContent: "center" },
+  roundButtonText: { color: COLORS.primary, fontSize: 28, fontWeight: "900" },
+  statusPill: { backgroundColor: "rgba(3,24,27,0.68)", borderWidth: 1, borderColor: "rgba(106,242,224,0.25)", paddingHorizontal: 16, paddingVertical: 10, borderRadius: 999 },
+  statusPillText: { color: "#FFFFFF", fontWeight: "900" },
+  scanFrame: { alignSelf: "center", width: "82%", aspectRatio: 1.12, borderRadius: 28, borderWidth: 1, borderColor: "rgba(106,242,224,0.18)", backgroundColor: "rgba(3,24,27,0.10)" },
+  cornerTL: { ...cornerBase, top: -1, left: -1, borderTopWidth: 4, borderLeftWidth: 4, borderTopLeftRadius: 28 },
+  cornerTR: { ...cornerBase, top: -1, right: -1, borderTopWidth: 4, borderRightWidth: 4, borderTopRightRadius: 28 },
+  cornerBL: { ...cornerBase, bottom: -1, left: -1, borderBottomWidth: 4, borderLeftWidth: 4, borderBottomLeftRadius: 28 },
+  cornerBR: { ...cornerBase, bottom: -1, right: -1, borderBottomWidth: 4, borderRightWidth: 4, borderBottomRightRadius: 28 },
+  scanDock: { backgroundColor: "rgba(255,255,255,0.92)" },
+  scanTitle: { color: COLORS.ink, fontSize: 22, fontWeight: "900" },
+  scanSubtitle: { marginTop: 6, color: COLORS.muted, fontWeight: "700", lineHeight: 20 },
+  spinner: { marginTop: SPACING.md },
+  permissionPanel: { gap: SPACING.md },
+  resultPanel: { gap: SPACING.md, marginBottom: SPACING.md },
+  productHeader: { flexDirection: "row", gap: SPACING.md, alignItems: "center" },
+  productImage: { width: 92, height: 92, borderRadius: RADIUS.lg, backgroundColor: "#FFFFFF" },
+  productImagePlaceholder: { width: 92, height: 92, borderRadius: RADIUS.lg, backgroundColor: COLORS.ice, alignItems: "center", justifyContent: "center" },
+  productImageText: { color: COLORS.primary, fontSize: 28, fontWeight: "900" },
+  productCopy: { flex: 1, gap: 6 },
+  productName: { color: COLORS.ink, fontSize: 22, lineHeight: 27, fontWeight: "900" },
+  brand: { color: COLORS.muted, fontWeight: "800" },
+  resultSummary: { flexDirection: "row", gap: SPACING.md },
+  summaryBox: { flex: 1, padding: SPACING.md, borderRadius: RADIUS.lg, backgroundColor: "rgba(5,123,117,0.06)", borderWidth: 1, borderColor: COLORS.border },
+  summaryBoxWarn: { backgroundColor: COLORS.moderateSubtle, borderColor: "rgba(249,115,22,0.22)" },
+  summaryBoxSafe: { backgroundColor: COLORS.safeSubtle, borderColor: "rgba(22,163,74,0.22)" },
+  summaryNumber: { color: COLORS.ink, fontSize: 28, fontWeight: "900" },
+  summaryText: { color: COLORS.muted, fontSize: 12, fontWeight: "800" },
+  sectionPanel: { gap: SPACING.md, marginBottom: SPACING.md },
+  sectionTitle: { color: COLORS.ink, fontSize: 18, fontWeight: "900" },
+  ingredients: { color: COLORS.text, lineHeight: 22, fontWeight: "600" },
+  body: { color: COLORS.text, lineHeight: 22, fontWeight: "600" },
+  matchList: { gap: SPACING.sm },
+  matchCard: { backgroundColor: COLORS.moderateSubtle, borderWidth: 1, borderColor: "rgba(249,115,22,0.18)", borderRadius: RADIUS.lg, padding: SPACING.md },
+  matchTitle: { color: COLORS.ink, fontWeight: "900", fontSize: 15 },
+  matchKeywords: { marginTop: 5, color: COLORS.text, fontWeight: "700", lineHeight: 19 },
+  noMatchText: { color: COLORS.safe, fontWeight: "800", lineHeight: 21 },
+  noticeCard: { padding: SPACING.md, borderRadius: RADIUS.lg, borderWidth: 1, borderColor: COLORS.border, backgroundColor: "rgba(255,255,255,0.80)" },
+  noticeTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: SPACING.sm },
+  noticeTitle: { flex: 1, color: COLORS.text, fontWeight: "900" },
+  noticeNote: { marginTop: 7, color: COLORS.muted, lineHeight: 19, fontWeight: "600" },
+  disclaimerPanel: { backgroundColor: "rgba(220,38,38,0.07)", borderColor: "rgba(220,38,38,0.16)", gap: 6, marginBottom: SPACING.md },
+  disclaimerTitle: { color: COLORS.high, fontWeight: "900" },
+  disclaimerText: { color: COLORS.text, lineHeight: 20, fontWeight: "700" },
+  bottomActions: { gap: SPACING.md, marginBottom: SPACING.xl },
 });

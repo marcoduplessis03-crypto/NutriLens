@@ -1,74 +1,33 @@
 import { router } from "expo-router";
-import { ScrollView, StyleSheet, Text, TouchableOpacity } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 
-import { COLORS, RADIUS, SPACING } from "../theme";
+import { ActionButton, GlassPanel, PageHeader, V21Screen } from "../components/NutriLensV21";
+import { COLORS, SPACING } from "../theme";
+
 export default function PrivacyPolicyScreen() {
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>Privacy Policy</Text>
-
-      <Text style={styles.text}>
-        NutriLens stores your scan profiles, avoid lists, and scan history
-        locally on your device using app storage.
-      </Text>
-
-      <Text style={styles.text}>
-        NutriLens does not require account sign-in. Your local profiles are not
-        sold or used for advertising.
-      </Text>
-
-      <Text style={styles.text}>
-        When you scan a barcode, NutriLens may connect to third-party food
-        product databases to retrieve product, ingredient, and nutrient
-        information. These services may receive the barcode being searched.
-      </Text>
-
-      <Text style={styles.text}>
-        You are responsible for managing your device and app data. Deleting the
-        app may remove locally stored profiles and scan history.
-      </Text>
-
-      <TouchableOpacity
-  style={styles.button}
-  onPress={() => router.replace("/terms-disclaimer")}
->
-        <Text style={styles.buttonText}>Back</Text>
-      </TouchableOpacity>
-    </ScrollView>
+    <V21Screen>
+      <PageHeader title="Privacy Policy" subtitle="SUBPrivacy Policy" />
+      <GlassPanel strong style={styles.panel}>
+        <Text style={styles.heading}>Local profile storage</Text>
+        <Text style={styles.body}>NutriLens stores your profiles, avoid lists, scan history, favorites, and terms acceptance locally on this device using app storage.</Text>
+        <Text style={styles.heading}>Product lookups</Text>
+        <Text style={styles.body}>When you scan a barcode, NutriLens may request product information from third-party product databases such as Open Food Facts. The barcode is sent as part of that lookup request.</Text>
+        <Text style={styles.heading}>No account required</Text>
+        <Text style={styles.body}>NutriLens does not require Google, Apple, email, or password sign-in for the local profile experience.</Text>
+        <Text style={styles.heading}>Data control</Text>
+        <Text style={styles.body}>You can edit or delete local profiles, clear scan history, and remove favorites inside the app.</Text>
+      </GlassPanel>
+      <View style={styles.buttonWrap}>
+        <ActionButton title="Back" subtitle="Return to previous screen" icon="‹" onPress={() => router.back()} />
+      </View>
+    </V21Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-  content: {
-    padding: SPACING.lg,
-    paddingTop: SPACING.xl * 2,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: "700",
-    color: COLORS.text,
-    marginBottom: SPACING.lg,
-  },
-  text: {
-    fontSize: 16,
-    lineHeight: 24,
-    color: COLORS.muted,
-    marginBottom: SPACING.md,
-  },
-  button: {
-    marginTop: SPACING.lg,
-    backgroundColor: COLORS.primary,
-    padding: SPACING.md,
-    borderRadius: RADIUS.lg,
-    alignItems: "center",
-  },
-  buttonText: {
-    color: "#fff",
-    fontWeight: "700",
-    fontSize: 16,
-  },
+  panel: { gap: SPACING.md },
+  heading: { color: COLORS.ink, fontSize: 16, fontWeight: "900", marginTop: SPACING.sm },
+  body: { color: COLORS.text, fontSize: 14, lineHeight: 22, fontWeight: "600" },
+  buttonWrap: { marginTop: SPACING.md },
 });

@@ -1,12 +1,13 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-const TERMS_ACCEPTANCE_KEY = "@nutrilens_terms_accepted_v1";
+export const TERMS_ACCEPTANCE_KEY = "@nutrilens_terms_accepted_v1";
 
 export async function hasAcceptedTerms(): Promise<boolean> {
   try {
-    const value = await AsyncStorage.getItem(TERMS_ACCEPTANCE_KEY);
-    return value === "true";
-  } catch {
+    const saved = await AsyncStorage.getItem(TERMS_ACCEPTANCE_KEY);
+    return saved === "true";
+  } catch (error) {
+    console.log("Failed to read terms acceptance:", error);
     return false;
   }
 }

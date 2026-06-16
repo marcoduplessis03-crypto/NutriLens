@@ -1,76 +1,33 @@
 import { router } from "expo-router";
-import { ScrollView, StyleSheet, Text, TouchableOpacity } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 
-import { COLORS, RADIUS, SPACING } from "../theme";
+import { ActionButton, GlassPanel, PageHeader, V21Screen } from "../components/NutriLensV21";
+import { COLORS, SPACING } from "../theme";
 
 export default function DisclaimerAboutScreen() {
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>Disclaimer / About NutriLens</Text>
-
-      <Text style={styles.text}>
-        NutriLens is an ingredient awareness scanner. It lets users create local
-        profiles and flag ingredients, additives, allergens, or nutrients they
-        personally want to notice.
-      </Text>
-
-      <Text style={styles.text}>
-        NutriLens does not diagnose, treat, prevent, or manage any medical
-        condition. It does not provide risk scores or medical recommendations.
-      </Text>
-
-      <Text style={styles.text}>
-        Product information comes from available food database sources and may
-        not always match the item in your hand.
-      </Text>
-
-      <Text style={styles.text}>
-        Always read the product label. If a food choice could affect your
-        health, allergies, medication, or diet plan, ask a qualified healthcare
-        professional.
-      </Text>
-
-     <TouchableOpacity
-  style={styles.button}
-  onPress={() => router.replace("/terms-disclaimer")}
->
-        <Text style={styles.buttonText}>Back</Text>
-      </TouchableOpacity>
-    </ScrollView>
+    <V21Screen>
+      <PageHeader title="About NutriLens" subtitle="SUBAbout NutriLens" />
+      <GlassPanel strong style={styles.panel}>
+        <Text style={styles.heading}>About</Text>
+        <Text style={styles.body}>NutriLens helps users scan product barcodes, review available ingredients, and flag selected ingredients from their personal avoid list.</Text>
+        <Text style={styles.heading}>Disclaimer</Text>
+        <Text style={styles.body}>NutriLens is not a medical device and does not determine whether a food is safe or suitable for you.</Text>
+        <Text style={styles.heading}>Product labels matter</Text>
+        <Text style={styles.body}>Always check the physical product packaging, allergen statements, and nutrition panel before making decisions.</Text>
+        <Text style={styles.heading}>Best use</Text>
+        <Text style={styles.body}>Use NutriLens as a faster first-pass label helper, not as a replacement for professional advice or label verification.</Text>
+      </GlassPanel>
+      <View style={styles.buttonWrap}>
+        <ActionButton title="Back" subtitle="Return to previous screen" icon="‹" onPress={() => router.back()} />
+      </View>
+    </V21Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-  content: {
-    padding: SPACING.lg,
-    paddingTop: SPACING.xl * 2,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: "700",
-    color: COLORS.text,
-    marginBottom: SPACING.lg,
-  },
-  text: {
-    fontSize: 16,
-    lineHeight: 24,
-    color: COLORS.muted,
-    marginBottom: SPACING.md,
-  },
-  button: {
-    marginTop: SPACING.lg,
-    backgroundColor: COLORS.primary,
-    padding: SPACING.md,
-    borderRadius: RADIUS.lg,
-    alignItems: "center",
-  },
-  buttonText: {
-    color: "#fff",
-    fontWeight: "700",
-    fontSize: 16,
-  },
+  panel: { gap: SPACING.md },
+  heading: { color: COLORS.ink, fontSize: 16, fontWeight: "900", marginTop: SPACING.sm },
+  body: { color: COLORS.text, fontSize: 14, lineHeight: 22, fontWeight: "600" },
+  buttonWrap: { marginTop: SPACING.md },
 });

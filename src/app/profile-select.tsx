@@ -1,152 +1,48 @@
 import { router, useFocusEffect } from "expo-router";
-import React, { useCallback, useState } from "react";
-import {
-  Alert,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import React, { useState } from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
-import {
-  deleteProfile,
-  getActiveProfileId,
-  getUserProfiles,
-  setActiveProfile,
-  signOutUser,
-  UserProfile,
-} from "../storage/profileStorage";
+import { ActionButton, EmptyState, GlassPanel, PageHeader, Pill, V21Screen } from "../components/NutriLensV21";
+import { getActiveProfileId, getUserProfiles, setActiveProfileId, UserProfile } from "../storage/profileStorage";
 import { COLORS, RADIUS, SPACING } from "../theme";
 
 export default function ProfileSelectScreen() {
   const [profiles, setProfiles] = useState<UserProfile[]>([]);
-  const [activeProfileId, setActiveProfileId] = useState<string | null>(null);
+  const [activeId, setActiveId] = useState<string | null>(null);
 
   useFocusEffect(
-    useCallback(() => {
-      loadProfiles();
+    React.useCallback(() => {
+      async function load() {
+        setProfiles(await getUserProfiles());
+        setActiveId(await getActiveProfileId());
+      }
+      load();
     }, [])
   );
 
-  async function loadProfiles() {
-    const savedProfiles = await getUserProfiles();
-    const activeId = await getActiveProfileId();
-
-    setProfiles(savedProfiles);
-    setActiveProfileId(activeId);
-  }
-
-  async function handleSelectProfile(profileId: string) {
-    await setActiveProfile(profileId);
-    router.replace("/scanner");
-  }
-
-  function handleNewProfile() {
-    router.push("/profile-setup");
-  }
-
-  async function handleSignOut() {
-    await signOutUser();
-    setActiveProfileId(null);
-
-    Alert.alert(
-      "Signed out",
-      "No profile is currently selected. Your local profiles are still saved."
-    );
-  }
-
-  function confirmDeleteProfile(profile: UserProfile) {
-    const isActive = profile.id === activeProfileId;
-
-    Alert.alert(
-      "Delete profile?",
-      `Hold up — this will permanently delete "${profile.name}" from this phone.${
-        isActive
-          ? " This is your active profile, so you will need to choose or create another one before scanning."
-          : ""
-      } Scan history will stay saved.`,
-      [
-        {
-          text: "Cancel",
-          style: "cancel",
-        },
-        {
-          text: "Delete Profile",
-          style: "destructive",
-          onPress: async () => {
-            await deleteProfile(profile.id);
-            await loadProfiles();
-          },
-        },
-      ]
-    );
+  async function selectProfile(profile: UserProfile) {
+    await setActiveProfileId(profile.id);
+    router.replace("/home");
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.title}>Choose Profile</Text>
-
-      <Text style={styles.subtitle}>
-        Select the local scan profile you want to use. Profiles are saved on
-        this phone only.
-      </Text>
+    <V21Screen>
+      <PageHeader title="Select Profile" subtitle="Choose the avoid list you want to use for scanning." />
 
       {profiles.length === 0 ? (
-        <View style={styles.emptyCard}>
-          <Text style={styles.emptyTitle}>No profiles yet</Text>
-
-          <Text style={styles.emptyText}>
-            Create a profile to choose ingredients and nutrients you want
-            NutriLens to check for.
-          </Text>
-        </View>
+        <EmptyState title="No profiles yet" message="Create your first profile to start scanning products with NutriLens." />
       ) : (
-        <View style={styles.profileList}>
+        <View style={styles.list}>
           {profiles.map((profile) => {
-            const isActive = profile.id === activeProfileId;
-
+            const selected = profile.id === activeId;
             return (
-              <Pressable
-                key={profile.id}
-                onPress={() => handleSelectProfile(profile.id)}
-                onLongPress={() => confirmDeleteProfile(profile)}
-                delayLongPress={500}
-                style={({ pressed }) => [
-                  styles.profileCard,
-                  isActive && styles.profileCardActive,
-                  pressed && styles.profileCardPressed,
-                ]}
-              >
-                <View style={styles.profileTopRow}>
-                  <View style={styles.avatarCircle}>
-                    <Text style={styles.avatarText}>
-                      {profile.name.trim().charAt(0).toUpperCase() || "N"}
-                    </Text>
+              <Pressable key={profile.id} onPress={() => selectProfile(profile)} style={[styles.profileCard, selected && styles.profileCardSelected]}>
+                <View style={styles.profileTop}>
+                  <View>
+                    <Text style={[styles.profileName, selected && styles.profileNameSelected]}>{profile.name}</Text>
+                    <Text style={styles.profileMeta}>{profile.avoidIds.length} avoid-list selections</Text>
                   </View>
-
-                  <View style={styles.profileTextWrap}>
-                    <Text style={styles.profileName}>{profile.name}</Text>
-
-                    <Text style={styles.profileMeta}>
-                      {profile.avoidIds.length} selected item
-                      {profile.avoidIds.length === 1 ? "" : "s"}
-                    </Text>
-                  </View>
-
-                  {isActive && (
-                    <View style={styles.activeBadge}>
-                      <Text style={styles.activeBadgeText}>Active</Text>
-                    </View>
-                  )}
-                </View>
-
-                <View style={styles.profileFooter}>
-                  <Text style={styles.profileHint}>
-                    Tap to use • Hold to delete
-                  </Text>
-
-                  <Text style={styles.deleteHint}>🗑️</Text>
+                  {selected ? <Pill tone="safe">Active</Pill> : <Pill>Select</Pill>}
                 </View>
               </Pressable>
             );
@@ -154,196 +50,21 @@ export default function ProfileSelectScreen() {
         </View>
       )}
 
-      <Pressable style={styles.primaryButton} onPress={handleNewProfile}>
-        <Text style={styles.primaryButtonText}>Create New Profile</Text>
-      </Pressable>
-
-      <Pressable style={styles.secondaryButton} onPress={handleSignOut}>
-        <Text style={styles.secondaryButtonText}>Sign Out</Text>
-      </Pressable>
-
-      <Pressable style={styles.linkButton} onPress={() => router.replace("/")}>
-        <Text style={styles.linkButtonText}>Back to Welcome</Text>
-      </Pressable>
-    </ScrollView>
+      <GlassPanel style={styles.actionsPanel}>
+        <ActionButton title="Create New Profile" subtitle="Add another avoid list" icon="＋" onPress={() => router.push("/profile-setup")} variant="primary" />
+        <ActionButton title="Manage Profiles" subtitle="Edit or delete profiles" icon="⚙️" onPress={() => router.push("/profile-manage")} />
+      </GlassPanel>
+    </V21Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flexGrow: 1,
-    backgroundColor: COLORS.background,
-    padding: SPACING.xl,
-    paddingTop: 70,
-  },
-
-  title: {
-    fontSize: 34,
-    fontWeight: "900",
-    color: COLORS.text,
-    marginBottom: SPACING.sm,
-  },
-
-  subtitle: {
-    fontSize: 15,
-    lineHeight: 23,
-    color: COLORS.muted,
-    marginBottom: SPACING.xl,
-  },
-
-  emptyCard: {
-    backgroundColor: COLORS.card,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: RADIUS.lg,
-    padding: SPACING.lg,
-    marginBottom: SPACING.xl,
-  },
-
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: "900",
-    color: COLORS.text,
-    marginBottom: 6,
-  },
-
-  emptyText: {
-    fontSize: 14,
-    lineHeight: 21,
-    color: COLORS.muted,
-  },
-
-  profileList: {
-    gap: SPACING.md,
-    marginBottom: SPACING.xl,
-  },
-
-  profileCard: {
-    backgroundColor: COLORS.card,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: RADIUS.lg,
-    padding: SPACING.lg,
-  },
-
-  profileCardActive: {
-    borderColor: COLORS.primary,
-    backgroundColor: "rgba(15, 118, 110, 0.08)",
-  },
-
-  profileCardPressed: {
-    opacity: 0.85,
-    transform: [{ scale: 0.99 }],
-  },
-
-  profileTopRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SPACING.md,
-  },
-
-  avatarCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: COLORS.primary,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  avatarText: {
-    color: "#FFFFFF",
-    fontSize: 18,
-    fontWeight: "900",
-  },
-
-  profileTextWrap: {
-    flex: 1,
-  },
-
-  profileName: {
-    fontSize: 18,
-    fontWeight: "900",
-    color: COLORS.text,
-  },
-
-  profileMeta: {
-    fontSize: 14,
-    color: COLORS.muted,
-    marginTop: 4,
-  },
-
-  activeBadge: {
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: RADIUS.full,
-  },
-
-  activeBadgeText: {
-    color: "#FFFFFF",
-    fontSize: 11,
-    fontWeight: "900",
-  },
-
-  profileFooter: {
-    marginTop: SPACING.md,
-    paddingTop: SPACING.md,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.border,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-
-  profileHint: {
-    fontSize: 13,
-    color: COLORS.primary,
-    fontWeight: "800",
-  },
-
-  deleteHint: {
-    fontSize: 16,
-  },
-
-  primaryButton: {
-    backgroundColor: COLORS.primary,
-    borderRadius: RADIUS.lg,
-    paddingVertical: 17,
-    alignItems: "center",
-    marginBottom: SPACING.md,
-  },
-
-  primaryButtonText: {
-    color: "#FFFFFF",
-    fontSize: 16,
-    fontWeight: "900",
-  },
-
-  secondaryButton: {
-    backgroundColor: COLORS.card,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: RADIUS.lg,
-    paddingVertical: 16,
-    alignItems: "center",
-    marginBottom: SPACING.md,
-  },
-
-  secondaryButtonText: {
-    color: COLORS.text,
-    fontSize: 15,
-    fontWeight: "900",
-  },
-
-  linkButton: {
-    alignItems: "center",
-    paddingVertical: 10,
-  },
-
-  linkButtonText: {
-    color: COLORS.muted,
-    fontSize: 14,
-    fontWeight: "800",
-  },
+  list: { gap: SPACING.md },
+  profileCard: { backgroundColor: "rgba(255,255,255,0.88)", borderRadius: RADIUS.xl, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.lg },
+  profileCardSelected: { backgroundColor: "rgba(5,123,117,0.08)", borderColor: "rgba(5,123,117,0.34)" },
+  profileTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: SPACING.md },
+  profileName: { color: COLORS.text, fontSize: 20, fontWeight: "900" },
+  profileNameSelected: { color: COLORS.primary },
+  profileMeta: { marginTop: 4, color: COLORS.muted, fontWeight: "700" },
+  actionsPanel: { marginTop: SPACING.lg, gap: SPACING.md },
 });

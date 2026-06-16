@@ -1,13 +1,15 @@
 import { router } from "expo-router";
 import { useState } from "react";
-import {
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
+import {
+  ActionButton,
+  GlassPanel,
+  LegalLink,
+  PageHeader,
+  V21Screen,
+} from "../components/NutriLensV21";
+import { acceptTerms } from "../storage/termsAcceptance";
 import { COLORS, RADIUS, SPACING } from "../theme";
 
 export default function TermsDisclaimerScreen() {
@@ -17,193 +19,157 @@ export default function TermsDisclaimerScreen() {
   async function handleContinue() {
     if (!agreeChecked || saving) return;
 
-    setSaving(true);
-    router.replace("/profile-select");
+    try {
+      setSaving(true);
+      await acceptTerms();
+      router.replace("/home");
+    } catch (error) {
+      console.log("Failed to accept terms:", error);
+      setSaving(false);
+    }
   }
 
   return (
-    <View style={styles.screen}>
-      <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.logo}>NutriLens</Text>
-        <Text style={styles.title}>Before you continue</Text>
+    <V21Screen scroll={false} contentStyle={styles.content}>
+      <PageHeader
+        title="Terms & Disclaimer"
+        subtitle="Please review and accept before using NutriLens."
+      />
 
-        <Text style={styles.body}>
-          NutriLens helps you scan food products, view ingredient and nutrient
-          information, and flag items based on your own selected avoid list.
-        </Text>
-
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Important disclaimer</Text>
-
-          <Text style={styles.cardText}>
-            NutriLens is for general ingredient awareness and nutrient
-            information only. It does not provide medical advice, diagnosis,
-            treatment, risk scoring, or product safety guarantees.
+      <GlassPanel strong style={styles.panel}>
+        <ScrollView style={styles.scrollBox} showsVerticalScrollIndicator={false}>
+          <Text style={styles.sectionTitle}>What NutriLens does</Text>
+          <Text style={styles.body}>
+            NutriLens is a barcode scanner and product label helper. It compares
+            available product ingredient text against your selected avoid list and
+            displays basic nutrient awareness information when product data is
+            available.
           </Text>
 
-          <Text style={styles.cardText}>
-            Food product data may be incomplete, outdated, incorrect, or missing.
-            Always check the physical product label before consuming anything.
+          <Text style={styles.sectionTitle}>Not medical advice</Text>
+          <Text style={styles.body}>
+            NutriLens is not a medical device and does not provide medical advice,
+            diagnosis, treatment, prevention, or safety guarantees. Always check
+            the physical product label and speak with a qualified healthcare
+            professional for medical or dietary advice.
           </Text>
 
-          <Text style={styles.cardText}>
-            If you have allergies, dietary restrictions, a medical condition, or
-            specific nutritional needs, speak to a qualified healthcare
-            professional before making decisions.
+          <Text style={styles.sectionTitle}>Product data can be incomplete</Text>
+          <Text style={styles.body}>
+            Product information may be incomplete, outdated, unavailable, or
+            provided by third-party databases. A result may show no selected
+            ingredients found simply because the database does not include a full
+            ingredient list.
           </Text>
-        </View>
 
-        <TouchableOpacity
-          style={styles.linkButton}
-          onPress={() => router.push("/privacy-policy")}
-        >
-          <Text style={styles.linkText}>Privacy Policy</Text>
-        </TouchableOpacity>
+          <Text style={styles.sectionTitle}>Your responsibility</Text>
+          <Text style={styles.body}>
+            You are responsible for checking packaging, allergen statements,
+            ingredient lists, and nutrition labels before making purchase or
+            eating decisions.
+          </Text>
+        </ScrollView>
 
-        <TouchableOpacity
-          style={styles.linkButton}
-          onPress={() => router.push("/terms-of-use")}
+        <Pressable
+          style={styles.checkRow}
+          onPress={() => setAgreeChecked((value) => !value)}
         >
-          <Text style={styles.linkText}>Terms of Use</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.linkButton}
-          onPress={() => router.push("/disclaimer-about")}
-        >
-          <Text style={styles.linkText}>Disclaimer / About NutriLens</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.checkboxRow}
-          onPress={() => setAgreeChecked((current) => !current)}
-          activeOpacity={0.8}
-        >
-          <View style={[styles.checkbox, agreeChecked && styles.checkboxActive]}>
+          <View style={[styles.checkbox, agreeChecked && styles.checkboxChecked]}>
             {agreeChecked ? <Text style={styles.checkmark}>✓</Text> : null}
           </View>
-
-          <Text style={styles.checkboxText}>
-            I have read and agree to the Terms of Use, Privacy Policy, and
-            Disclaimer.
+          <Text style={styles.checkText}>
+            I understand and agree to the Terms, Privacy Policy, and Disclaimer.
           </Text>
-        </TouchableOpacity>
+        </Pressable>
 
-        <TouchableOpacity
-          style={[
-            styles.continueButton,
-            (!agreeChecked || saving) && styles.continueButtonDisabled,
-          ]}
-          disabled={!agreeChecked || saving}
+        <ActionButton
+          title={saving ? "Saving..." : "I Understand and Agree"}
+          subtitle="Continue to NutriLens Home"
+          icon="✓"
           onPress={handleContinue}
-        >
-          <Text style={styles.continueText}>
-            {saving ? "Continuing..." : "Agree and Continue"}
-          </Text>
-        </TouchableOpacity>
-      </ScrollView>
-    </View>
+          disabled={!agreeChecked || saving}
+          variant="primary"
+        />
+      </GlassPanel>
+
+      <View style={styles.links}>
+        <LegalLink
+          title="Privacy Policy"
+          onPress={() => router.push("/privacy-policy")}
+        />
+        <LegalLink
+          title="Terms of Use"
+          onPress={() => router.push("/terms-of-use")}
+        />
+        <LegalLink
+          title="Disclaimer / About NutriLens"
+          onPress={() => router.push("/disclaimer-about")}
+        />
+      </View>
+    </V21Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
   content: {
-    padding: SPACING.lg,
-    paddingTop: SPACING.xl * 2,
+    flex: 1,
   },
-  logo: {
-    fontSize: 34,
-    fontWeight: "700",
-    color: COLORS.primary,
-    textAlign: "center",
-    marginBottom: SPACING.lg,
+  panel: {
+    gap: SPACING.md,
   },
-  title: {
-    fontSize: 26,
-    fontWeight: "700",
-    color: COLORS.text,
-    marginBottom: SPACING.md,
+  scrollBox: {
+    maxHeight: 360,
+  },
+  sectionTitle: {
+    color: COLORS.ink,
+    fontSize: 16,
+    fontWeight: "900",
+    marginTop: SPACING.md,
+    marginBottom: SPACING.xs,
   },
   body: {
-    fontSize: 16,
-    lineHeight: 24,
-    color: COLORS.muted,
-    marginBottom: SPACING.lg,
-  },
-  card: {
-    backgroundColor: COLORS.card,
-    borderRadius: RADIUS.lg,
-    padding: SPACING.lg,
-    marginBottom: SPACING.lg,
-  },
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: "700",
     color: COLORS.text,
-    marginBottom: SPACING.sm,
-  },
-  cardText: {
-    fontSize: 15,
+    fontSize: 14,
     lineHeight: 22,
-    color: COLORS.muted,
-    marginBottom: SPACING.sm,
-  },
-  linkButton: {
-    backgroundColor: COLORS.card,
-    borderRadius: RADIUS.md,
-    padding: SPACING.md,
-    marginBottom: SPACING.sm,
-  },
-  linkText: {
-    color: COLORS.primary,
-    fontSize: 16,
     fontWeight: "600",
   },
-  checkboxRow: {
+  checkRow: {
     flexDirection: "row",
-    alignItems: "flex-start",
-    gap: SPACING.sm,
-    marginTop: SPACING.lg,
-    marginBottom: SPACING.lg,
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: "rgba(5,123,117,0.06)",
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: SPACING.md,
   },
   checkbox: {
-    width: 26,
-    height: 26,
-    borderRadius: 8,
+    width: 28,
+    height: 28,
+    borderRadius: 9,
     borderWidth: 2,
     borderColor: COLORS.primary,
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: "#FFFFFF",
   },
-  checkboxActive: {
+  checkboxChecked: {
     backgroundColor: COLORS.primary,
   },
   checkmark: {
-    color: "#fff",
-    fontWeight: "700",
+    color: "#FFFFFF",
+    fontSize: 18,
+    fontWeight: "900",
   },
-  checkboxText: {
+  checkText: {
     flex: 1,
     color: COLORS.text,
-    fontSize: 15,
-    lineHeight: 22,
-  },
-  continueButton: {
-    backgroundColor: COLORS.primary,
-    borderRadius: RADIUS.lg,
-    padding: SPACING.md,
-    alignItems: "center",
-  },
-  continueButtonDisabled: {
-    opacity: 0.45,
-  },
-  continueText: {
-    color: "#fff",
-    fontSize: 17,
+    fontSize: 13,
+    lineHeight: 18,
     fontWeight: "700",
+  },
+  links: {
+    gap: SPACING.sm,
+    marginTop: SPACING.md,
   },
 });
